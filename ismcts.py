@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # This is a very simple Python 2.7 implementation of the Information Set Monte Carlo Tree Search algorithm.
 # The function ISMCTS(rootstate, itermax, verbose = False) is towards the bottom of the code.
 # It aims to have the clearest and simplest possible code, and for the sake of clarity, the code
@@ -104,6 +105,7 @@ class LoveLetterState(GameState):
         self.cardnumber = 15
         self.playerHands = {p: [] for p in xrange(1, self.numberOfPlayers + 1)}
         self.knowledge = {p: [] for p in xrange(1, self.numberOfPlayers + 1)}
+        self.knockedOut = {p: False for p in xrange(1, self.numberOfPlayers + 1)}
         self.discards = []  # Stores the cards that have been played already in this round
         self.currentTrick = []
         self.tricksTaken = {}  # Number of tricks taken by each player this round
@@ -185,21 +187,35 @@ class LoveLetterState(GameState):
 
         if move == 1:
             # стражница
+
+            # choose player to guess
             player_to_guess = None
             while not player_to_guess or player_to_guess == self.playerToMove:
                 player_to_guess = random.randint(1, self.numberOfPlayers)
 
+            # choose card to guess
             seenCards = self.playerHands[self.playerHands] + self.discards + [card for (player, card) in self.currentTrick]
 
             for player, cards in self.knowledge:
                 seenCards += cards
 
             counter = defaultdict(0)
-            max_number, card = 0, None
+            max_frequency, max_frequency_cards = 0, set()
             for card in self.get_card_deck():
-                counter[card] += 1
-                if counter[ca]
+                if card not in seenCards:
+                    counter[card] += 1
+                max_frequency = max(max_frequency, counter[card])
 
+            for card in self.get_card_deck():
+                if counter[card] == max_frequency:
+                    max_frequency_cards.add(card)
+
+            chosen_card = random.choice(max_frequency_cards)
+
+            # correct guess
+            if chosen_card in self.playerHands[player_to_guess]:
+                self.
+                self.numberOfPlayers -= 1
 
         # Store the played card in the current trick
         self.currentTrick.append((self.playerToMove, move))
