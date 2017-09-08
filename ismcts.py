@@ -17,6 +17,7 @@
 # Also read the article accompanying this code at ***URL HERE***
 from collections import defaultdict
 from math import *
+from cardclasses import *
 import random, sys
 from copy import deepcopy
 
@@ -72,24 +73,58 @@ class GameState:
         pass
 
 
-class Card:
-    """ A playing card, with rank and suit.
-        rank must be an integer between 1 and 8 inclusive 
-    """
+class User:
+    def __init__(self, uid):
+        self.card = None
+        self.uid = uid
+        self.new_card = None
+        self.defence = False
 
-    def __init__(self, rank):
-        if not 1 <= rank <= 8:
-            raise Exception("Invalid card")
-        self.rank = rank
-
-    def __repr__(self):
-        return self.rank
+    def take_card(self, deck):
+        self.card = deck[-1]
+        self.card.owner = self
+        del deck[-1]
 
     def __eq__(self, other):
-        return self.rank == other.rank
+        return self.uid == getattr(other, 'uid', None)
 
     def __ne__(self, other):
-        return self.rank != other.rank
+        return not self == other
+
+
+class UserCtl:
+    def __init__(self, number_of_players):
+
+        self.users = [User(uid) for uid in xrange(1, number_of_players + 1)]
+        self.next_dealer = 0
+
+    def add(self, user):
+        self.users.append(user)
+
+    def shuffle(self):
+        random.shuffle(self.users)
+
+    def next(self):
+        self.next_dealer = (self.next_dealer + 1) % len(self.users)
+        return self.users[self.next_dealer - 1]
+
+    def __contains__(self, user):
+        return user in self.users
+
+    def kill(self, user):
+        if self.next_dealer > self.users.index(user):
+            self.next_dealer -= 1
+        self.users.remove(user)
+
+    def get_victims(self, dealer):
+        victims = []
+        for user in self.users:
+            if not user.defence and user.uid != dealer.uid:
+                victims.append(user.name)
+        return victims
+
+    def num_users(self):
+        return len(self.users)
 
 
 class LoveLetterState(GameState):
@@ -101,8 +136,9 @@ class LoveLetterState(GameState):
         """ Initialise the game state. n is the number of players (from 2 to 4).
         """
         self.numberOfPlayers = n
+        self.user_ctl = UserCtl(self.numberOfPlayers)
+        self.user_ctl.shuffle()
         self.playerToMove = 1
-        self.cardnumber = 15
         self.playerHands = {p: [] for p in xrange(1, self.numberOfPlayers + 1)}
         self.knowledge = {p: [] for p in xrange(1, self.numberOfPlayers + 1)}
         self.knockedOut = {p: False for p in xrange(1, self.numberOfPlayers + 1)}
@@ -110,7 +146,11 @@ class LoveLetterState(GameState):
         self.currentTrick = []
         self.tricksTaken = {}  # Number of tricks taken by each player this round
         self.round = 1
-        self.deal()
+        self.deck = self.get_card_deck()
+        random.shuffle(self.deck)
+        # remove one card from deck
+        self.deck.pop()
+        # self.deal()
 
     def clone(self):
         """ Create a deep clone of this game state.
@@ -122,6 +162,9 @@ class LoveLetterState(GameState):
         st.discards = deepcopy(self.discards)
         st.currentTrick = deepcopy(self.currentTrick)
         st.tricksTaken = deepcopy(self.tricksTaken)
+        st.knockedOut = deepcopy(self.knockedOut)
+        st.user_ctl = UserCtl(self.numberOfPlayers)
+
         return st
 
     def clone_and_randomize(self, observer):
@@ -148,15 +191,22 @@ class LoveLetterState(GameState):
     def get_card_deck(self):
         """ Construct a standard deck of 16 cards.
         """
-        deck = []
-        for rank in xrange(2, 8 + 1):
-            card_number = 1
-            if rank == 1:
-                card_number = 5
-            elif rank <= 5:
-                card_number = 2
-            deck.extend([Card(rank) for _ in range(card_number)])
-        return deck
+        return [Princess(),
+                Countess(),
+                King(),
+                Prince(),
+                Prince(),
+                Maid(),
+                Maid(),
+                Baron(),
+                Baron(),
+                Priest(),
+                Priest(),
+                Guard(),
+                Guard(),
+                Guard(),
+                Guard(),
+                Guard()]
 
     def deal(self):
         """ Reset the game state for the beginning of a new round, and deal the cards.
@@ -165,11 +215,8 @@ class LoveLetterState(GameState):
         self.currentTrick = []
         self.tricksTaken = {p: 0 for p in xrange(1, self.numberOfPlayers + 1)}
 
-        # Construct a deck, shuffle it, and deal it to the players
-        self.deck = self.get_card_deck()
-        random.shuffle(self.deck)
-        for p in xrange(1, self.numberOfPlayers + 1):
-            self.playerHands[p].append(self.deck.pop())
+        for user in self.user_ctl.users:
+            user.take_card(self.deck)
 
     def get_next_player(self, p):
         """ Return the player to the left of the specified player, skipping players who have been knocked out
@@ -185,19 +232,20 @@ class LoveLetterState(GameState):
             Must update playerToMove.
         """
 
-        if move == 1:
+        # choose player to guess
+        left_players = [player for player in range(1, self.numberOfPlayers + 1)
+                        if not self.knockedOut[player] and self.playerToMove != player]
+        player_to_guess = random.choice(left_players)
+
+        if player_to_guess and move == 1:
             # стражница
 
-            # choose player to guess
-            player_to_guess = None
-            while not player_to_guess or player_to_guess == self.playerToMove:
-                player_to_guess = random.randint(1, self.numberOfPlayers)
-
             # choose card to guess
-            seenCards = self.playerHands[self.playerHands] + self.discards + [card for (player, card) in self.currentTrick]
+            seenCards = self.playerHands[self.playerToMove] + self.discards + [card for (player, card) in self.currentTrick]
 
             for player, cards in self.knowledge:
-                seenCards += cards
+                if player == player_to_guess:
+                    seenCards += cards
 
             counter = defaultdict(0)
             max_frequency, max_frequency_cards = 0, set()
@@ -214,8 +262,15 @@ class LoveLetterState(GameState):
 
             # correct guess
             if chosen_card in self.playerHands[player_to_guess]:
-                self.
-                self.numberOfPlayers -= 1
+                self.knockedOut[player_to_guess] = True
+                self.currentTrick.append(chosen_card)
+            # incorrect guess
+            else:
+                self.knowledge[player_to_guess].append(chosen_card)
+
+        elif player_to_guess and move == 2:
+            # священник
+            pass
 
         # Store the played card in the current trick
         self.currentTrick.append((self.playerToMove, move))
@@ -406,16 +461,14 @@ def PlayGame():
     """ Play a sample game between 4 ISMCTS players.
     """
     state = LoveLetterState(4)
+    state.deal()
 
     while True:
         print str(state)
         # Use different numbers of iterations (simulations, tree nodes) for different players
-        if state.playerToMove == 1:
-            m = ISMCTS(rootstate=state, itermax=1000, verbose=False)
-        else:
-            m = ISMCTS(rootstate=state, itermax=100, verbose=False)
-        print "Best Move: " + str(m) + "\n"
-        state.do_move(m)
+        move = ISMCTS(rootstate=state, itermax=100, verbose=False)
+        # print "Best Move: " + str(m) + "\n"
+        state.do_move(move)
 
     someoneWon = False
     for p in xrange(1, state.numberOfPlayers + 1):
