@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import random
+from collections import defaultdict
 
 
 class Card:
@@ -8,6 +9,16 @@ class Card:
     need_victim = False
     need_guess = False
     name = None
+    card_amount = {
+        'Princess': 1,
+        'Countess': 1,
+        'King': 1,
+        'Prince': 2,
+        'Maid': 2,
+        'Baron': 2,
+        'Priest': 2,
+        'Guard': 5,
+    }
 
     def __eq__(self, other):
         return self.name == getattr(other, 'name', None)
@@ -25,7 +36,10 @@ class Card:
         return self.value > other.value
 
     def __str__(self):
-        return self.name
+        return str(self.name)
+
+    def __hash__(self):
+        return hash(str(self.name))
 
 
 class Princess(Card):
@@ -46,7 +60,8 @@ class Countess(Card):
     value = 7
 
     def activate(self, game, victim, verbose):
-        pass
+        if verbose:
+            print("{} makes move with Counterss".format(game.user_ctl.users[game.playerToMove]))
         # TODO: не забыть сбросить графиню
         #markup = types.ReplyKeyboardRemove(selective=False)
         #game.bot.send_message(game.group_chat, '@{} сбрасывает Графиню.'.format(self.owner.name))

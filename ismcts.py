@@ -1,20 +1,4 @@
 # -*- coding: utf-8 -*-
-# This is a very simple Python 2.7 implementation of the Information Set Monte Carlo Tree Search algorithm.
-# The function ISMCTS(rootstate, itermax, verbose = False) is towards the bottom of the code.
-# It aims to have the clearest and simplest possible code, and for the sake of clarity, the code
-# is orders of magnitude less efficient than it could be made, particularly by using a
-# state.GetRandomMove() or state.DoRandomRollout() function.
-#
-# An example GameState classes for Knockout Whist is included to give some idea of how you
-# can write your own GameState to use ISMCTS in your hidden information game.
-#
-# Written by Peter Cowling, Edward Powley, Daniel Whitehouse (University of York, UK) September 2012 - August 2013.
-#
-# Licence is granted to freely use and distribute for any sensible/legal purpose so long as this comment
-# remains in any distributed code.
-#
-# For more information about Monte Carlo Tree Search check out our web site at www.mcts.ai
-# Also read the article accompanying this code at ***URL HERE***
 from collections import defaultdict
 from math import *
 from cardclasses import *
@@ -279,7 +263,6 @@ class LoveLetterState(GameState):
                         if not player.defence and current_player != player and not player.lost]
         victim = random.choice(left_players) if left_players else None
 
-
         # Remove the card from the player's hand
 
         self.playerHands[current_player].remove(move)
@@ -442,7 +425,7 @@ def ISMCTS(rootstate, itermax, verbose=False):
         state = rootstate.clone_and_randomize()
 
         # Select
-        while not node.get_untried_moves(state.get_moves()):  # node is fully expanded and non-terminal
+        while not state.game_over and not node.get_untried_moves(state.get_moves()):  # node is fully expanded and non-terminal
             assert len(state.get_moves()) == 2
             node = node.ucb_select_child(state.get_moves())
             state.do_move(node.move)
@@ -489,10 +472,6 @@ def PlayGame():
         # print "Best Move: " + str(m) + "\n"
         state.do_move(move, verbose=True)
 
-        if state.round % 3 == 0:
-            for player in state.user_ctl.users:
-                print(player, state.tricksTaken[player])
-            print("#" * 80)
 
     for player in state.user_ctl.users:
         if state.tricksTaken[player] == 4:
