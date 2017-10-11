@@ -2,65 +2,15 @@
 from collections import defaultdict
 from math import *
 from cardclasses import *
-import random, sys
+import random
 from copy import deepcopy
 from operator import itemgetter
-
-
-class GameState:
-    """ A state of the game, i.e. the game board. These are the only functions which are
-        absolutely necessary to implement ISMCTS in any imperfect information game,
-        although they could be enhanced and made quicker, for example by using a 
-        GetRandomMove() function to generate a random move during rollout.
-        By convention the players are numbered 1, 2, ..., self.numberOfPlayers.
-    """
-
-    def __init__(self):
-        self.numberOfPlayers = 2
-        self.playerToMove = 1
-
-    def get_next_player(self, p):
-        """ Return the player to the left of the specified player
-        """
-        return (p % self.numberOfPlayers) + 1
-
-    def clone(self):
-        """ Create a deep clone of this game state.
-        """
-        st = GameState()
-        st.playerToMove = self.playerToMove
-        return st
-
-    def clone_and_randomize(self, observer):
-        """ Create a deep clone of this game state, randomizing any information not visible to the specified observer player.
-        """
-        return self.clone()
-
-    def do_move(self, move):
-        """ Update a state by carrying out the given move.
-            Must update playerToMove.
-        """
-        self.playerToMove = self.get_next_player(self.playerToMove)
-
-    def get_moves(self):
-        """ Get all possible moves from this state.
-        """
-        raise NotImplementedException()
-
-    def get_result(self, player):
-        """ Get the game result from the viewpoint of player. 
-        """
-        raise NotImplementedException()
-
-    def __repr__(self):
-        """ Don't need this - but good style.
-        """
-        pass
 
 
 class User:
     def __init__(self, uid, lost=False):
         self.lost = lost
+        self.won_round = False
         self.uid = uid
         self.defence = False
 
@@ -93,6 +43,9 @@ class UserCtl:
         random.shuffle(self.users)
 
     def next_player(self):
+        """
+        :return: index of next player to make move 
+        """
         while self.users[self.current_player_index].lost:
             self.current_player_index += 1
             if self.current_player_index == len(self.users):
@@ -115,10 +68,17 @@ class UserCtl:
         victims = []
         for user in self.users:
             if not user.defence and user.uid != dealer.uid:
-                victims.append(user.name)
+                victims.append(user)
         return victims
 
+    def get_active_user(self, state):
+        return self.users[state.playerToMove]
+
     def clone(self):
+        """
+        clones current user ctl
+        :return: deep clone
+        """
         cloned = UserCtl(len(self.users))
         cloned.users = [User(user.uid, user.lost) for user in self.users]
         cloned.current_player_index = self.current_player_index
@@ -135,7 +95,7 @@ class UserCtl:
         raise AssertionError("Error happened!")
 
 
-class LoveLetterState(GameState):
+class LoveLetterState:
     """
      A state of the game love letter.
     """
@@ -146,7 +106,6 @@ class LoveLetterState(GameState):
         """
         self.numberOfPlayers = n
         self.used_cards = []  # Stores the cards that have been played already in this round
-        # TODO: Add knowledge of each player about others
         self.tricksTaken = defaultdict(int)  # Number of tricks taken by each player
         self.round = 0
         self.game_over = False
@@ -162,18 +121,20 @@ class LoveLetterState(GameState):
         st.currentTrick = deepcopy(self.currentTrick)
         st.tricksTaken = deepcopy(self.tricksTaken)
         st.out_card = deepcopy(self.out_card)
+        st.round_over = self.round_over
         st.game_over = self.game_over
         st.deck = st.get_card_deck()
         st.deck.remove(st.out_card)
 
         counter = 0
+        # TODO: Correct this place
         for card in st.used_cards:
-            try:
-                st.deck.remove(card)
-            except ValueError:
-                counter += 1
-            if counter > 1:
-                raise Exception("Отсутсвует к колоде карты")
+            # try:
+            st.deck.remove(card)
+            # except ValueError:
+            #     counter += 1
+            # if counter > 1:
+            #     raise Exception("Отсутсвует к колоде карты")
 
         random.shuffle(st.deck)
         st.user_ctl = self.user_ctl.clone()
@@ -188,6 +149,7 @@ class LoveLetterState(GameState):
         assert len(self.playerHands[self.user_ctl.users[self.playerToMove]]) == 2
         # assign same card for current user
         st.playerHands[current_user] = deepcopy(self.playerHands[self.user_ctl.users[self.playerToMove]])
+        # remove current player's cards from deck
         for card in self.playerHands[self.user_ctl.users[self.playerToMove]]:
             st.deck.remove(card)
         # assign random cards for other users
@@ -197,6 +159,9 @@ class LoveLetterState(GameState):
         return st
 
     def get_moves(self):
+        """
+        :return: list of available moves for current user 
+        """
         return self.playerHands[self.user_ctl.users[self.playerToMove]]
 
     def get_card_deck(self):
@@ -220,9 +185,12 @@ class LoveLetterState(GameState):
                 Guard()]
 
     def start_new_round(self, first_player=None):
-        """ Reset the game state for the beginning of a new round, and deal the cards.
+        """
+        :param first_player: player(instance of User class) who starts current round. If None, then random player starts round 
+        :return:  
         """
         self.round += 1
+        self.round_over = False
         self.user_ctl = UserCtl(self.numberOfPlayers)
         self.user_ctl.shuffle()
 
@@ -230,11 +198,11 @@ class LoveLetterState(GameState):
         random.shuffle(self.deck)
         # remove one card from deck and remember it
         self.out_card = self.deck.pop()
-
         self.playerToMove = self.user_ctl.next_player()
         self.playerHands = {user: [] for user in self.user_ctl.users}
         #  if there is winner in previous round, then he or she starts the next round
         if first_player:
+            # place player on first position in player list
             for index, user in enumerate(self.user_ctl.users):
                 if index > 0 and user == first_player:
                     self.user_ctl.users[index], self.user_ctl.users[0] = self.user_ctl.users[0], user
@@ -246,27 +214,34 @@ class LoveLetterState(GameState):
         for user in self.user_ctl.users:
             user.take_card(self)
 
+        # player who makes move takes second card
         self.user_ctl.users[self.playerToMove].take_card(self)
 
-    def do_move(self, move, verbose=False):
-        """ Update a state by carrying out the given move.
-            Must update playerToMove.
+    def do_move(self, move, verbose=False, global_game=False):
+        """
+        Function apply moves for current player and change state (itself)
+        :param move: move to make
+        :param verbose: simple logging of every action
+        :param global_game: in case of simulation algorithm plays until round ends.
+        in case of global gamel multiple rounds are played.
+        :return: 
         """
 
-        # choose player to guess
         current_player = self.user_ctl.users[self.playerToMove]
 
+        # deactivate action of defense from previous move
         if current_player.defence:
             current_player.defence = False
 
         left_players = [player for player in self.user_ctl.users
                         if not player.defence and current_player != player and not player.lost]
+        # TODO: smart opponent selection using knowledge about them
         victim = random.choice(left_players) if left_players else None
 
         # Remove the card from the player's hand
-
         self.playerHands[current_player].remove(move)
         assert len(self.playerHands[current_player]) == 1
+
         self.used_cards.append(move)
 
         move.activate(self, victim, verbose)
@@ -278,10 +253,15 @@ class LoveLetterState(GameState):
         if self.user_ctl.players_left_number() == 1:
             winner = self.user_ctl.get_left_player()
             self.tricksTaken[winner] += 1
+            winner.won_round = True
+
             if self.tricksTaken[winner] == 4:
                 self.game_over = True
-            self.last_winner = winner
-            self.start_new_round(first_player=winner)
+
+            self.round_over = True
+            if global_game:
+                self.start_new_round(first_player=winner)
+
         # deck is empty, so game is over
         elif len(self.deck) == 0:
             for player in self.user_ctl.users:
@@ -295,16 +275,20 @@ class LoveLetterState(GameState):
 
             # TODO: handle case when one player has greater sum than the others
             winner = cards[0][0]
+            winner.won_round = True
             self.tricksTaken[winner] += 1
             if self.tricksTaken[winner] == 4:
                 self.game_over = True
-            self.last_winner = winner
-            self.start_new_round(first_player=winner)
+
+            self.round_over = True
+            if global_game:
+                self.start_new_round(first_player=winner)
         else:
             # Find the next player
             previous_player = self.playerToMove
             self.playerToMove = self.user_ctl.next_player()
 
+            # check that there are more that one player
             assert previous_player != self.playerToMove
             self.user_ctl.users[self.playerToMove].take_card(self)
 
@@ -345,10 +329,11 @@ class Node:
 
     def get_untried_moves(self, legalMoves):
         """ Return the elements of legalMoves for which this node does not have children.
+            length of legalMoves always be less that or equal to 2
         """
 
         # Find all moves for which this node *does* have children
-        triedMoves = [child.move for child in self.childNodes]
+        triedMoves = {child.move for child in self.childNodes}
 
         # Return all moves that are legal but have not been tried yet
         return [move for move in legalMoves if move not in triedMoves]
@@ -390,12 +375,12 @@ class Node:
     def __repr__(self):
         return "[M:%s W/V/A: %4i/%4i/%4i]" % (self.move, self.wins, self.visits, self.avails)
 
-    def TreeToString(self, indent):
+    def tree_to_string(self, indent):
         """ Represent the tree as a string, for debugging purposes.
         """
         s = self.IndentString(indent) + str(self)
         for c in self.childNodes:
-            s += c.TreeToString(indent + 1)
+            s += c.tree_to_string(indent + 1)
         return s
 
     def IndentString(self, indent):
@@ -425,23 +410,29 @@ def ISMCTS(rootstate, itermax, verbose=False):
         state = rootstate.clone_and_randomize()
 
         # Select
-        while not state.game_over and not node.get_untried_moves(state.get_moves()):  # node is fully expanded and non-terminal
+        while not state.round_over and not node.get_untried_moves(state.get_moves()):
+            # node is fully expanded and non-terminal
             assert len(state.get_moves()) == 2
             node = node.ucb_select_child(state.get_moves())
             state.do_move(node.move)
 
         # Expand
         untriedMoves = node.get_untried_moves(state.get_moves())
-        assert len(state.get_moves()) == 2
-        if untriedMoves:  # if we can expand (i.e. state/node is non-terminal)
+        if not state.round_over:
+            assert len(state.get_moves()) == 2
+
+        if untriedMoves and not state.round_over:  # if we can expand (i.e. state/node is non-terminal)
+            # at expansion step algorithm chooses node randomly
             m = random.choice(untriedMoves)
             player = state.user_ctl.users[state.playerToMove]
             state.do_move(m)
             node = node.add_child(m, player)  # add child and descend tree
 
         # Simulate
-        while not state.game_over and state.get_moves():  # while state is non-terminal
+        while not state.round_over and state.get_moves():  # while state is non-terminal
+            # checking that player holds 2 cards before making move
             assert len(state.get_moves()) == 2
+            # TODO: smart move selection
             state.do_move(random.choice(state.get_moves()))
 
         # Backpropagate
@@ -451,15 +442,16 @@ def ISMCTS(rootstate, itermax, verbose=False):
 
     # Output some information about the tree - can be omitted
     if verbose:
-        print rootnode.TreeToString(0)
+        print rootnode.tree_to_string(0)
     else:
         print rootnode.children_to_string()
 
     return max(rootnode.childNodes, key=lambda c: c.visits).move  # return the move that was most visited
 
 
-def PlayGame():
-    """ Play a sample game between 4 ISMCTS players.
+def play_game():
+    """ 
+    Play a sample game between 4 ISMCTS players.
     """
     state = LoveLetterState(4)
     state.start_new_round()
@@ -467,11 +459,9 @@ def PlayGame():
 
     while not state.game_over:
         print(state)
-        # Use different numbers of iterations (simulations, tree nodes) for different players
         move = ISMCTS(rootstate=state, itermax=100, verbose=False)
         # print "Best Move: " + str(m) + "\n"
-        state.do_move(move, verbose=True)
-
+        state.do_move(move, verbose=True, global_game=True)
 
     for player in state.user_ctl.users:
         if state.tricksTaken[player] == 4:
@@ -479,4 +469,4 @@ def PlayGame():
 
 
 if __name__ == "__main__":
-    PlayGame()
+    play_game()
