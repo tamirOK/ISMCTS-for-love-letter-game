@@ -227,6 +227,10 @@ class LoveLetterState:
         :return: 
         """
 
+        # if AI bot made move with princess, make move with another card
+        while move.name == "Princess":
+            move = random.choice(self.get_moves())
+
         current_player = self.user_ctl.users[self.playerToMove]
 
         # deactivate action of defense from previous move
@@ -295,10 +299,23 @@ class LoveLetterState:
     def get_result(self, player):
         """ Get the game result from the viewpoint of player. 
         """
-        return 1 if self.tricksTaken[player] == 4 else 0
+        for x in self.tricksTaken:
+            assert x <= 1
+        return 1 if self.tricksTaken[player] == 1 else 0
 
     def take_card_from_deck(self):
         self.playerHands[self.playerToMove].append(self.deck.pop())
+
+    def check_move(self, move, available_moves):
+
+        # do not allow to make move with princess card
+        while move == Princess():
+            move = random.choice(available_moves)
+        # countess and king or countess and prince are in hand, make move with countess card
+        if Countess() in available_moves and (King() in available_moves or Prince() in available_moves):
+            move = Countess()
+        return move
+
 
     def __repr__(self):
         """ Return a human-readable representation of the state
@@ -333,7 +350,7 @@ class Node:
         """
 
         # Find all moves for which this node *does* have children
-        triedMoves = {child.move for child in self.childNodes}
+        triedMoves = [child.move for child in self.childNodes]
 
         # Return all moves that are legal but have not been tried yet
         return [move for move in legalMoves if move not in triedMoves]
@@ -408,13 +425,15 @@ def ISMCTS(rootstate, itermax, verbose=False):
 
         # Determinize
         state = rootstate.clone_and_randomize()
-
         # Select
         while not state.round_over and not node.get_untried_moves(state.get_moves()):
             # node is fully expanded and non-terminal
+            available_moves = state.get_moves()
             assert len(state.get_moves()) == 2
-            node = node.ucb_select_child(state.get_moves())
-            state.do_move(node.move)
+
+            node = node.ucb_select_child(available_moves)
+            move = state.check_move(node.move, available_moves)
+            state.do_move(move)
 
         # Expand
         untriedMoves = node.get_untried_moves(state.get_moves())
@@ -433,7 +452,15 @@ def ISMCTS(rootstate, itermax, verbose=False):
             # checking that player holds 2 cards before making move
             assert len(state.get_moves()) == 2
             # TODO: smart move selection
-            state.do_move(random.choice(state.get_moves()))
+            m = random.choice(state.get_moves())
+            m = state.check_move(m, state.get_moves())
+            # if princess card was selected, take another card
+            while m.name == "Princess":
+                print("{} picked princess".format(state.user_ctl.users[state.playerToMove]))
+                m = random.choice(state.get_moves())
+
+
+            state.do_move(m)
 
         # Backpropagate
         while node:  # backpropagate from the expanded node and work back to the root node

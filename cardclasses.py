@@ -184,6 +184,7 @@ class Guard(Card):
                 card
                 for card in game.get_card_deck()
                 if card not in game.used_cards and card not in game.playerHands[game.user_ctl.users[game.playerToMove]]
+                    and card.name != "Guard"
             ]
             card = random.choice(available_cards) if available_cards else None
 
