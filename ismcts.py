@@ -162,7 +162,14 @@ class LoveLetterState:
         """
         :return: list of available moves for current user 
         """
-        return self.playerHands[self.user_ctl.users[self.playerToMove]]
+        available_moves = self.playerHands[self.user_ctl.users[self.playerToMove]]
+
+        # countess and king or countess and prince are in hand, return move with countess card
+        if Countess() in available_moves and (King() in available_moves or Prince() in available_moves):
+            return [Countess()]
+
+        return available_moves
+
 
     def get_card_deck(self):
         """ Construct a standard deck of 16 cards.
@@ -311,9 +318,6 @@ class LoveLetterState:
         # do not allow to make move with princess card
         while move == Princess():
             move = random.choice(available_moves)
-        # countess and king or countess and prince are in hand, make move with countess card
-        if Countess() in available_moves and (King() in available_moves or Prince() in available_moves):
-            move = Countess()
         return move
 
 
@@ -429,7 +433,6 @@ def ISMCTS(rootstate, itermax, verbose=False):
         while not state.round_over and not node.get_untried_moves(state.get_moves()):
             # node is fully expanded and non-terminal
             available_moves = state.get_moves()
-            assert len(state.get_moves()) == 2
 
             node = node.ucb_select_child(available_moves)
             move = state.check_move(node.move, available_moves)
@@ -437,8 +440,6 @@ def ISMCTS(rootstate, itermax, verbose=False):
 
         # Expand
         untriedMoves = node.get_untried_moves(state.get_moves())
-        if not state.round_over:
-            assert len(state.get_moves()) == 2
 
         if untriedMoves and not state.round_over:  # if we can expand (i.e. state/node is non-terminal)
             # at expansion step algorithm chooses node randomly
@@ -450,15 +451,9 @@ def ISMCTS(rootstate, itermax, verbose=False):
         # Simulate
         while not state.round_over and state.get_moves():  # while state is non-terminal
             # checking that player holds 2 cards before making move
-            assert len(state.get_moves()) == 2
             # TODO: smart move selection
             m = random.choice(state.get_moves())
             m = state.check_move(m, state.get_moves())
-            # if princess card was selected, take another card
-            while m.name == "Princess":
-                print("{} picked princess".format(state.user_ctl.users[state.playerToMove]))
-                m = random.choice(state.get_moves())
-
 
             state.do_move(m)
 
