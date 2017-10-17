@@ -7,6 +7,18 @@ from copy import deepcopy
 from operator import itemgetter
 
 
+card_dict = {
+    'princess': Princess(),
+    'countess': Countess(),
+    'king': King(),
+    'priest': Priest(),
+    'maid': Maid(),
+    'baron': Baron(),
+    'priest': Priest(),
+    'guard': Guard()
+}
+
+
 class User:
     def __init__(self, uid, lost=False):
         self.lost = lost
@@ -33,7 +45,7 @@ class User:
 class UserCtl:
     def __init__(self, number_of_players):
 
-        self.users = [User(uid) for uid in xrange(1, number_of_players + 1)]
+        self.users = [User(uid) for uid in range(1, number_of_players + 1)]
         self.current_player_index = 0
 
     def add(self, user):
@@ -224,7 +236,7 @@ class LoveLetterState:
         # player who makes move takes second card
         self.user_ctl.users[self.playerToMove].take_card(self)
 
-    def do_move(self, move, verbose=False, global_game=False):
+    def do_move(self, move, **kwargs):
         """
         Function apply moves for current player and change state (itself)
         :param move: move to make
@@ -233,6 +245,11 @@ class LoveLetterState:
         in case of global gamel multiple rounds are played.
         :return: 
         """
+        global_game = kwargs.get('global_game', False)
+        victim = kwargs.get('victim')
+
+        if not 'verbose' in kwargs:
+            kwargs['verbose'] = False
 
         # if AI bot made move with princess, make move with another card
         while move.name == "Princess":
@@ -247,7 +264,10 @@ class LoveLetterState:
         left_players = [player for player in self.user_ctl.users
                         if not player.defence and current_player != player and not player.lost]
         # TODO: smart opponent selection using knowledge about them
-        victim = random.choice(left_players) if left_players else None
+
+        if not victim:
+            victim = random.choice(left_players) if left_players else None
+            kwargs['victim'] = victim
 
         # Remove the card from the player's hand
         self.playerHands[current_player].remove(move)
@@ -255,7 +275,7 @@ class LoveLetterState:
 
         self.used_cards.append(move)
 
-        move.activate(self, victim, verbose)
+        move.activate(self, **kwargs)
 
         # Store the played card in the current trick
         self.currentTrick.append((current_player, move))
@@ -306,8 +326,15 @@ class LoveLetterState:
     def get_result(self, player):
         """ Get the game result from the viewpoint of player. 
         """
-        for x in self.tricksTaken:
-            assert x <= 1
+        for x in self.tricksTaken.values():
+            try:
+                assert x <= 1
+            except AssertionError:
+                print("#" * 80)
+                from pprint import pprint
+                pprint(self.tricksTaken)
+                print("#" * 80)
+
         return 1 if self.tricksTaken[player] == 1 else 0
 
     def take_card_from_deck(self):
@@ -326,7 +353,7 @@ class LoveLetterState:
         """
         current_player = self.user_ctl.users[self.playerToMove]
         result = "Round %i" % self.round
-        result += " | P%s: " % current_player
+        result += " | %s: " % current_player
         result += ",".join(str(card) for card in self.playerHands[current_player])
         # result += " | Tricks: %i" % self.tricksTaken[self.user_ctl.users[self.playerToMove]]
         result += " | Trick: ["
@@ -411,6 +438,7 @@ class Node:
         return s
 
     def children_to_string(self):
+        print("Showing statistic:")
         s = ""
         for c in self.childNodes:
             s += str(c) + "\n"
@@ -464,11 +492,46 @@ def ISMCTS(rootstate, itermax, verbose=False):
 
     # Output some information about the tree - can be omitted
     if verbose:
-        print rootnode.tree_to_string(0)
+        print(rootnode.tree_to_string(0))
     else:
-        print rootnode.children_to_string()
+        print(rootnode.children_to_string())
 
     return max(rootnode.childNodes, key=lambda c: c.visits).move  # return the move that was most visited
+
+
+def get_single_player_move(state):
+    card = None
+
+    print("\nNow is your turn, {}. Choose card to move:".format(state.user_ctl.users[state.playerToMove]))
+    print("[", " ".join(str(card) for card in state.get_moves()), "]")
+
+    # deactivate defense from previous move
+    state.user_ctl.users[state.playerToMove].defence = False
+
+    move_index = int(input())
+    move = state.get_moves()[move_index]
+
+    # simple case when player does not need to select victim
+    if move == Countess():
+        return move, None, card
+
+    # if maid is selected, activate it on player (Rationality assumption)
+    if move == Maid():
+        return move, state.user_ctl.users[state.playerToMove], card
+
+    print("Now select victim")
+    left_players = [player for player in state.user_ctl.users
+                    if not player.defence and not player.lost]
+    print(left_players)
+    victim_index = int(input())
+
+    if move == Guard():
+        print("Select card to guess:")
+        selected_card = str(input())
+        print(type(selected_card))
+        card = card_dict[selected_card]
+
+    return move, left_players[victim_index], card
 
 
 def play_game():
@@ -477,17 +540,24 @@ def play_game():
     """
     state = LoveLetterState(4)
     state.start_new_round()
+    real_player = state.user_ctl.users[0]
     # take card from deck
-
+    print("You are {}".format(real_player))
     while not state.game_over:
-        print(state)
-        move = ISMCTS(rootstate=state, itermax=100, verbose=False)
-        # print "Best Move: " + str(m) + "\n"
-        state.do_move(move, verbose=True, global_game=True)
+        victim, victim_card = None, None
+
+        if state.user_ctl.users[state.playerToMove] == real_player:
+            move, victim, victim_card = get_single_player_move(state)
+            print("You play with {}".format(move))
+        else:
+            print("\n", state)
+            move = ISMCTS(rootstate=state, itermax=100, verbose=False)
+            # print "Best Move: " + str(m) + "\n"
+        state.do_move(move, verbose=True, global_game=True, victim=victim, victim_card=victim_card)
 
     for player in state.user_ctl.users:
         if state.tricksTaken[player] == 4:
-            print "Player " + str(player) + " wins!"
+            print("Player " + str(player) + " wins!")
 
 
 if __name__ == "__main__":
