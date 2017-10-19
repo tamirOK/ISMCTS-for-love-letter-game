@@ -14,7 +14,6 @@ card_dict = {
     'priest': Priest(),
     'maid': Maid(),
     'baron': Baron(),
-    'priest': Priest(),
     'guard': Guard()
 }
 
@@ -132,6 +131,7 @@ class LoveLetterState:
         st.used_cards = deepcopy(self.used_cards)
         st.currentTrick = deepcopy(self.currentTrick)
         st.tricksTaken = deepcopy(self.tricksTaken)
+        # TODO: FIX out card
         st.out_card = deepcopy(self.out_card)
         st.round_over = self.round_over
         st.game_over = self.game_over
@@ -141,12 +141,7 @@ class LoveLetterState:
         counter = 0
         # TODO: Correct this place
         for card in st.used_cards:
-            # try:
             st.deck.remove(card)
-            # except ValueError:
-            #     counter += 1
-            # if counter > 1:
-            #     raise Exception("Отсутсвует к колоде карты")
 
         random.shuffle(st.deck)
         st.user_ctl = self.user_ctl.clone()
@@ -291,6 +286,7 @@ class LoveLetterState:
 
             self.round_over = True
             if global_game:
+                print("\n\nRound #{} won by {}".format(self.round, winner))
                 self.start_new_round(first_player=winner)
 
         # deck is empty, so game is over
@@ -313,6 +309,7 @@ class LoveLetterState:
 
             self.round_over = True
             if global_game:
+                print("\n\nRound #{} won by {}".format(self.round, winner))
                 self.start_new_round(first_player=winner)
         else:
             # Find the next player
@@ -326,16 +323,7 @@ class LoveLetterState:
     def get_result(self, player):
         """ Get the game result from the viewpoint of player. 
         """
-        for x in self.tricksTaken.values():
-            try:
-                assert x <= 1
-            except AssertionError:
-                print("#" * 80)
-                from pprint import pprint
-                pprint(self.tricksTaken)
-                print("#" * 80)
-
-        return 1 if self.tricksTaken[player] == 1 else 0
+        return 1 if player.won_round else 0
 
     def take_card_from_deck(self):
         self.playerHands[self.playerToMove].append(self.deck.pop())
@@ -478,7 +466,6 @@ def ISMCTS(rootstate, itermax, verbose=False):
 
         # Simulate
         while not state.round_over and state.get_moves():  # while state is non-terminal
-            # checking that player holds 2 cards before making move
             # TODO: smart move selection
             m = random.choice(state.get_moves())
             m = state.check_move(m, state.get_moves())
@@ -500,6 +487,11 @@ def ISMCTS(rootstate, itermax, verbose=False):
 
 
 def get_single_player_move(state):
+    """
+    User selects card and victim.
+    :param state:
+    :return: Move that user selected, victim that user selected, and card to guess (for Guard only)
+    """
     card = None
 
     print("\nNow is your turn, {}. Choose card to move:".format(state.user_ctl.users[state.playerToMove]))
@@ -551,7 +543,7 @@ def play_game():
             print("You play with {}".format(move))
         else:
             print("\n", state)
-            move = ISMCTS(rootstate=state, itermax=100, verbose=False)
+            move = ISMCTS(rootstate=state, itermax=1000, verbose=False)
             # print "Best Move: " + str(m) + "\n"
         state.do_move(move, verbose=True, global_game=True, victim=victim, victim_card=victim_card)
 
