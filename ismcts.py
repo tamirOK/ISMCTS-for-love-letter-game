@@ -205,8 +205,13 @@ class LoveLetterState:
         """
         self.round += 1
         self.round_over = False
-        self.user_ctl = UserCtl(self.numberOfPlayers)
-        self.user_ctl.shuffle()
+
+        if not hasattr(self, "user_ctl"):
+            self.user_ctl = UserCtl(self.numberOfPlayers)
+            self.user_ctl.shuffle()
+        else:
+            for user in self.user_ctl.users:
+                user.defence = user.lost = user.won_round = False
 
         self.deck = self.get_card_deck()
         random.shuffle(self.deck)
@@ -294,13 +299,19 @@ class LoveLetterState:
             for player in self.user_ctl.users:
                 assert len(self.playerHands[player]) <= 1
 
-            cards = [(player, self.playerHands[player])
-                    for player in self.user_ctl.users
+            def played_card_sum(player):
+                result = 0
+                for moved_player, card in self.currentTrick:
+                    if moved_player == player:
+                        result += card.value
+                return result
+
+            cards = [(player, self.playerHands[player], played_card_sum(player))
+                     for player in self.user_ctl.users
                      if not player.lost]
 
-            cards.sort(key=itemgetter(1), reverse=True)
+            cards.sort(key=lambda item: (item[1], item[2]), reverse=True)
 
-            # TODO: handle case when one player has greater sum than the others
             winner = cards[0][0]
             winner.won_round = True
             self.tricksTaken[winner] += 1
@@ -382,6 +393,7 @@ class Node:
         # Filter the list of children by the list of legal moves
         legalChildren = [child for child in self.childNodes if child.move in legalMoves]
 
+        # Get the child with the highest UCB score
         # Get the child with the highest UCB score
         s = max(legalChildren,
                 key=lambda c: float(c.wins) / float(c.visits) + exploration * sqrt(log(c.avails) / float(c.visits)))
@@ -532,7 +544,7 @@ def play_game():
     """
     state = LoveLetterState(4)
     state.start_new_round()
-    real_player = state.user_ctl.users[0]
+    real_player = None
     # take card from deck
     print("You are {}".format(real_player))
     while not state.game_over:
@@ -543,7 +555,7 @@ def play_game():
             print("You play with {}".format(move))
         else:
             print("\n", state)
-            move = ISMCTS(rootstate=state, itermax=1000, verbose=False)
+            move = ISMCTS(rootstate=state, itermax=100, verbose=False)
             # print "Best Move: " + str(m) + "\n"
         state.do_move(move, verbose=True, global_game=True, victim=victim, victim_card=victim_card)
 
