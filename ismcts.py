@@ -13,7 +13,8 @@ card_dict = {
     'priest': Priest(),
     'maid': Maid(),
     'baron': Baron(),
-    'guard': Guard()
+    'guard': Guard(),
+    'prince': Prince(),
 }
 
 
@@ -538,7 +539,6 @@ def get_single_player_move(state):
     if move == Guard():
         print("Select card to guess:")
         selected_card = str(input())
-        print(type(selected_card))
         card = card_dict[selected_card]
 
     return move, left_players[victim_index], card
@@ -550,7 +550,7 @@ def play_game():
     """
     state = LoveLetterState(4)
     state.start_new_round()
-    real_player = None
+    real_player = state.user_ctl.users[0]
     # take card from deck
     print("You are {}".format(real_player))
     while not state.game_over:
