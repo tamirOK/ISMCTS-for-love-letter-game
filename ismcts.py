@@ -4,7 +4,6 @@ from math import *
 from cardclasses import *
 import random
 from copy import deepcopy
-from operator import itemgetter
 
 
 card_dict = {
@@ -121,6 +120,14 @@ class LoveLetterState:
         self.round = 0
         self.game_over = False
 
+    def select_outcard(self):
+        """
+        Choosing outcard with uniform probability
+        :return: out_card
+        """
+        unique_cards = list(set(self.deck))
+        return random.choice(unique_cards)
+
     def clone(self):
         """ Create a deep clone of this game state.
         """
@@ -131,15 +138,10 @@ class LoveLetterState:
         st.used_cards = deepcopy(self.used_cards)
         st.currentTrick = deepcopy(self.currentTrick)
         st.tricksTaken = deepcopy(self.tricksTaken)
-        # TODO: FIX out card
-        st.out_card = deepcopy(self.out_card)
         st.round_over = self.round_over
         st.game_over = self.game_over
         st.deck = st.get_card_deck()
-        st.deck.remove(st.out_card)
 
-        counter = 0
-        # TODO: Correct this place
         for card in st.used_cards:
             st.deck.remove(card)
 
@@ -159,6 +161,11 @@ class LoveLetterState:
         # remove current player's cards from deck
         for card in self.playerHands[self.user_ctl.users[self.playerToMove]]:
             st.deck.remove(card)
+
+        # select outcard
+        st.out_card = st.select_outcard()
+        st.deck.remove(st.out_card)
+
         # assign random cards for other users
         for user in st.user_ctl.users:
             if user != current_user and not user.lost:
@@ -176,7 +183,6 @@ class LoveLetterState:
             return [Countess()]
 
         return available_moves
-
 
     def get_card_deck(self):
         """ Construct a standard deck of 16 cards.
