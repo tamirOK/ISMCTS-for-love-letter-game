@@ -35,8 +35,8 @@ class Princess(Card):
 
     def activate(self, game, victim, verbose, **kwargs):
         if verbose:
-            print("{} makes move with Princess and leaves game".format(game.user_ctl.users[game.playerToMove]))
-        game.user_ctl.kill(game.user_ctl.users[game.playerToMove])
+            print("{} makes move with Princess and leaves game".format(game.playerToMove))
+        game.user_ctl.kill(game.playerToMove)
 
 
 class Countess(Card):
@@ -45,7 +45,7 @@ class Countess(Card):
 
     def activate(self, game, victim, verbose, **kwargs):
         if verbose:
-            print("{} makes move with Counterss".format(game.user_ctl.users[game.playerToMove]))
+            print("{} makes move with Counterss".format(game.playerToMove))
         # TODO: не забыть сбросить графиню
 
 
@@ -59,10 +59,10 @@ class King(Card):
             pass
         else:
             if verbose:
-                print("{} makes move with King against {}".format(game.user_ctl.users[game.playerToMove], victim))
+                print("{} makes move with King against {}".format(game.playerToMove, victim))
 
             # exchanging with cards with victim
-            current_player = game.user_ctl.users[game.playerToMove]
+            current_player = game.playerToMove
             card1 = game.playerHands[current_player].pop()
             card2 = game.playerHands[victim].pop()
 
@@ -83,7 +83,7 @@ class Prince(Card):
             assert(len(game.playerHands[victim]) == 0)
             game.used_cards.append(card)
             if verbose:
-                print("{} makes move with Prince against {}".format(game.user_ctl.users[game.playerToMove], victim))
+                print("{} makes move with Prince against {}".format(game.playerToMove, victim))
                 print("{} drops {}".format(victim, card))
             if card == Princess():
                 game.user_ctl.kill(victim)
@@ -100,7 +100,7 @@ class Prince(Card):
             victim.take_card(game)
         else:
             # apply prince card to itself
-            current_player = game.user_ctl.users[game.playerToMove]
+            current_player = game.playerToMove
             card = game.playerHands[current_player].pop()
 
             assert len(game.playerHands[current_player]) == 0
@@ -120,9 +120,9 @@ class Maid(Card):
 
     def activate(self, game, victim, verbose, **kwargs):
         # It is assumed that all players play optimally, thus player applies defense to itself
-        game.user_ctl.users[game.playerToMove].defence = True
+        game.playerToMove.defence = True
         if verbose:
-            print("{} applied defense(Maid) to itself".format(game.user_ctl.users[game.playerToMove]))
+            print("{} applied defense(Maid) to itself".format(game.playerToMove))
 
 
 class Baron(Card):
@@ -133,7 +133,7 @@ class Baron(Card):
         if not victim:
             pass
         else:
-            owner = game.user_ctl.users[game.playerToMove]
+            owner = game.playerToMove
 
             assert len(game.playerHands[owner]) == 1
             assert len(game.playerHands[victim]) == 1
@@ -162,11 +162,13 @@ class Priest(Card):
 
     def activate(self, game, victim, verbose, **kwargs):
         if verbose:
-            print("{} plays Priest".format(game.user_ctl.users[game.playerToMove]))
+            print("{} plays Priest".format(game.playerToMove))
         if not victim:
             pass
         else:
-            pass
+            current_player = game.playerToMove
+            victims_card = game.playerHands[victim][0]
+            game.seen_cards[current_player][victim].append(victims_card)
             # TODO: add knowledge about opponent's cards
 
 
@@ -179,13 +181,13 @@ class Guard(Card):
         if not victim:
             pass
             if verbose:
-                print("{} plays Guard to itself".format(game.user_ctl.users[game.playerToMove]))
+                print("{} plays Guard to itself".format(game.playerToMove))
         else:
             if not victim_card:
                 available_cards = [
                     card
                     for card in game.get_card_deck()
-                    if card not in game.used_cards and card not in game.playerHands[game.user_ctl.users[game.playerToMove]]
+                    if card not in game.used_cards and card not in game.playerHands[game.playerToMove]
                         and card.name != "Guard"
                 ]
                 victim_card = random.choice(available_cards) if available_cards else None
@@ -194,8 +196,8 @@ class Guard(Card):
                 game.used_cards.append(victim_card)
                 game.user_ctl.kill(victim)
                 if verbose:
-                    print("{} kicks out {} via Guard".format(game.user_ctl.users[game.playerToMove], victim))
+                    print("{} kicks out {} via Guard".format(game.playerToMove, victim))
             else:
-                pass
+                game.wrong_guesses[victim].append(victim_card)
                 if verbose:
-                    print("{} doesn't kick out {} via Guard with guess {}".format(game.user_ctl.users[game.playerToMove], victim, victim_card))
+                    print("{} doesn't kick out {} via Guard with guess {}".format(game.playerToMove, victim, victim_card))
