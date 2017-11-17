@@ -1,113 +1,14 @@
 # -*- coding: utf-8 -*-
+
 from collections import defaultdict
 from copy import deepcopy
-from math import log, sqrt
 import random
+from typing import List, Tuple
 
-from cardclasses import Guard, Priest, Baron, Maid, Prince, King, Countess, Princess
+from cardclasses import Guard, Priest, Baron, Maid, Prince, King, Countess, Princess, card_dict, Card
 from ismcts import ISMCTS
-
-card_dict = {
-    'princess': Princess(),
-    'countess': Countess(),
-    'king': King(),
-    'priest': Priest(),
-    'maid': Maid(),
-    'baron': Baron(),
-    'guard': Guard(),
-    'prince': Prince(),
-}
-
-
-class User:
-    def __init__(self, uid, lost=False):
-        self.lost = lost
-        self.won_round = False
-        self.uid = uid
-        self.defence = False
-
-    def take_card(self, state):
-        state.playerHands[self].append(state.deck.pop())
-
-    def __eq__(self, other):
-        return self.uid == getattr(other, 'uid', None)
-
-    def __ne__(self, other):
-        return not self == other
-
-    def __hash__(self):
-        return hash(self.uid)
-
-    def __repr__(self):
-        return "User {0}".format(self.uid)
-
-
-class UserCtl:
-    def __init__(self, number_of_players):
-
-        self.users = [User(uid) for uid in range(1, number_of_players + 1)]
-        self.next_player_index = 0
-
-    def add(self, user):
-        self.users.append(user)
-
-    def shuffle(self):
-        random.shuffle(self.users)
-
-    def get_current_player(self):
-        """
-        :return: current player to make move
-        """
-        while self.users[self.next_player_index].lost:
-            self.next_player_index += 1
-            if self.next_player_index == len(self.users):
-                self.next_player_index = 0
-
-        result = self.next_player_index
-        self.next_player_index = (self.next_player_index + 1) % len(self.users)
-        return self.users[result]
-
-    def __contains__(self, user):
-        return user in self.users
-
-    def kill(self, user):
-        user.lost = True
-
-    def players_left_number(self):
-        return len([player for player in self.users if not player.lost])
-
-    def get_victims(self, dealer):
-        victims = []
-        for user in self.users:
-            if not user.defence and user.uid != dealer.uid:
-                victims.append(user)
-        return victims
-
-
-    def clone(self):
-        """
-        clones current user ctl
-        :return: deep clone
-        """
-        cloned = UserCtl(len(self.users))
-        cloned.users = [User(user.uid, user.lost) for user in self.users]
-        cloned.next_player_index = self.next_player_index
-        return cloned
-
-    def num_users(self):
-        return len(self.users)
-
-    def get_left_player(self):
-        for player in self.users:
-            if not player.lost:
-                return player
-
-        raise AssertionError("Error happened!")
-
-    def reset(self):
-        self.next_player_index = 0
-        for user in self.users:
-            user.defence = user.lost = user.won_round = False
+from player import Player, PlayerCtl
+from strategy import clean_cards
 
 
 class LoveLetterState:
@@ -115,19 +16,20 @@ class LoveLetterState:
      A state of the game love letter.
     """
 
-    def __init__(self, n):
+    def __init__(self, n: str) -> None:
         """ Initialise the game state which are constant during the game. 
             n is the number of players (from 2 to 4).
         """
         self.numberOfPlayers = n
-        self.used_cards = []  # Stores the cards that have been played already in this round
+        self.used_cards = defaultdict(int)  # Stores the cards that have been played already in this round
         self.tricksTaken = defaultdict(int)  # Number of tricks taken by each player
         self.round = 0
         self.game_over = False
         self.wrong_guesses = defaultdict(list)
         self.seen_cards = defaultdict(lambda: defaultdict(list))
+        self.real_players = []
 
-    def select_outcard(self):
+    def select_outcard(self) -> 'Card':
         """
         Choosing outcard with uniform probability
         :return: out_card
@@ -135,11 +37,15 @@ class LoveLetterState:
         unique_cards = list(set(self.deck))
         return random.choice(unique_cards)
 
-    def clone(self):
+    def get_winner(self):
+        winner = self.user_ctl.users[0] if self.user_ctl.users[0].won_round else self.user_ctl.users[1]
+        assert winner
+        return winner
+
+    def clone(self) -> 'LoveLetterState':
         """ Create a deep clone of this game state.
         """
         st = LoveLetterState(self.numberOfPlayers)
-        st.playerToMove = deepcopy(self.playerToMove)
         st.round = self.round
         st.playerHands = defaultdict(list)
         st.used_cards = deepcopy(self.used_cards)
@@ -151,15 +57,17 @@ class LoveLetterState:
         st.game_over = self.game_over
         st.deck = st.get_card_deck()
 
-        for card in st.used_cards:
-            st.deck.remove(card)
+        for card, counter in st.used_cards.items():
+            for _ in range(counter):
+                st.deck.remove(card)
 
         random.shuffle(st.deck)
         st.user_ctl = self.user_ctl.clone()
+        st.playerToMove = st.user_ctl.users[st.user_ctl.users.index(self.playerToMove)]
 
         return st
 
-    def clone_and_randomize(self):
+    def clone_and_randomize(self) -> 'LoveLetterState':
         """ Create a deep clone of this game state, randomizing any information not visible to the specified observer player.
         """
         st = self.clone()
@@ -170,17 +78,26 @@ class LoveLetterState:
         for card in self.playerHands[self.playerToMove]:
             st.deck.remove(card)
 
-        # select outcard
-        st.out_card = st.select_outcard()
-        st.deck.remove(st.out_card)
-
         # assign random cards for other users
         for user in st.user_ctl.users:
             if user != st.playerToMove and not user.lost:
-                user.take_card(st)
+                if st.seen_cards[st.playerToMove][user]:
+                    taken_card = random.choice(st.seen_cards[st.playerToMove][user])
+                    st.playerHands[user].append(taken_card)
+                    st.deck.remove(taken_card)
+                else:
+                    user.take_card(st)
+
+        # select outcard
+        st.out_card = st.deck.pop()
+
         return st
 
-    def get_moves(self):
+    def add_seen_card(self, _from, to, card):
+        if not self.seen_cards[_from][to] or self.seen_cards[_from][to][-1] != card:
+            self.seen_cards[_from][to].append(card)
+
+    def get_moves(self) -> List[Card]:
         """
         :return: list of available moves for current user 
         """
@@ -192,7 +109,7 @@ class LoveLetterState:
 
         return available_moves
 
-    def get_card_deck(self):
+    def get_card_deck(self) -> List[Card]:
         """ Construct a standard deck of 16 cards.
         """
         return [Princess(),
@@ -212,7 +129,7 @@ class LoveLetterState:
                 Guard(),
                 Guard()]
 
-    def start_new_round(self, first_player=None):
+    def start_new_round(self, first_player: 'Player'=None) -> None:
         """
         :param first_player: player(instance of User class) who starts current round. If None, then random player starts round 
         :return:  
@@ -221,7 +138,7 @@ class LoveLetterState:
         self.round_over = False
 
         if not hasattr(self, "user_ctl"):
-            self.user_ctl = UserCtl(self.numberOfPlayers)
+            self.user_ctl = PlayerCtl(self.numberOfPlayers)
             self.user_ctl.shuffle()
         else:
             self.user_ctl.reset()
@@ -239,8 +156,10 @@ class LoveLetterState:
                     self.user_ctl.users[index], self.user_ctl.users[0] = self.user_ctl.users[0], user
                     break
 
-        self.used_cards = []
+        self.used_cards = defaultdict(int)
         self.currentTrick = []
+        self.wrong_guesses = defaultdict(list)
+        self.seen_cards = defaultdict(lambda: defaultdict(list))
 
         for user in self.user_ctl.users:
             user.take_card(self)
@@ -249,7 +168,10 @@ class LoveLetterState:
         self.playerToMove = self.user_ctl.get_current_player()
         self.playerToMove.take_card(self)
 
-    def do_move(self, move, **kwargs):
+        if self.real_players and self.user_ctl.users[0] != self.real_players[0]:
+            print("Your new hand is: ", self.playerHands[self.real_players[0]])
+
+    def do_move(self, move: 'Card', **kwargs) -> None:
         """
         Function apply moves for current player and change state (itself)
         :param move: move to make
@@ -267,14 +189,17 @@ class LoveLetterState:
         if not 'verbose' in kwargs:
             kwargs['verbose'] = False
 
-
         # deactivate action of defense from previous move
         if self.playerToMove.defence:
             self.playerToMove.defence = False
 
+        old_wrong_guesses = self.wrong_guesses[self.playerToMove]
+        clean_cards(move, self.wrong_guesses[self.playerToMove], self.seen_cards, self.playerToMove)
+        if move not in old_wrong_guesses:
+            assert not old_wrong_guesses
+
         left_players = [player for player in self.user_ctl.users
                         if not player.defence and self.playerToMove != player and not player.lost]
-        # TODO: smart opponent selection using knowledge about them
 
         if not victim:
             victim = random.choice(left_players) if left_players else None
@@ -284,10 +209,12 @@ class LoveLetterState:
         self.playerHands[self.playerToMove].remove(move)
         assert len(self.playerHands[self.playerToMove]) == 1
 
-        self.used_cards.append(move)
-
+        self.used_cards[move] += 1
+        # code to refactor
+        if move.name == "Prince" and not victim:
+            clean_cards(self.playerHands[self.playerToMove][0], self.wrong_guesses[self.playerToMove], self.seen_cards, self.playerToMove)
         move.activate(self, **kwargs)
-
+        
         # Store the played card in the current trick
         self.currentTrick.append((self.playerToMove, move))
 
@@ -357,7 +284,6 @@ class LoveLetterState:
             move = random.choice(available_moves)
         return move
 
-
     def __repr__(self):
         """ Return a human-readable representation of the state
         """
@@ -372,91 +298,7 @@ class LoveLetterState:
         return result
 
 
-class Node:
-    """ A node in the game tree. Note wins is always from the viewpoint of playerJustMoved.
-    """
-
-    def __init__(self, move=None, parent=None, playerJustMoved=None):
-        self.move = move  # the move that got us to this node - "None" for the root node
-        self.parentNode = parent  # "None" for the root node
-        self.childNodes = []
-        self.wins = 0
-        self.visits = 0
-        self.avails = 1
-        self.playerJustMoved = playerJustMoved  # the only part of the state that the Node needs later
-
-    def get_untried_moves(self, legalMoves):
-        """ Return the elements of legalMoves for which this node does not have children.
-            length of legalMoves always be less that or equal to 2
-        """
-
-        # Find all moves for which this node *does* have children
-        triedMoves = [child.move for child in self.childNodes]
-
-        # Return all moves that are legal but have not been tried yet
-        return [move for move in legalMoves if move not in triedMoves]
-
-    def ucb_select_child(self, legalMoves, exploration=0.7):
-        """ Use the UCB1 formula to select a child node, filtered by the given list of legal moves.
-            exploration is a constant balancing between exploitation and exploration, with default value 0.7 (approximately sqrt(2) / 2)
-        """
-
-        # Filter the list of children by the list of legal moves
-        legalChildren = [child for child in self.childNodes if child.move in legalMoves]
-
-        # Get the child with the highest UCB score
-        # Get the child with the highest UCB score
-        s = max(legalChildren,
-                key=lambda c: float(c.wins) / float(c.visits) + exploration * sqrt(log(c.avails) / float(c.visits)))
-
-        # Update availability counts -- it is easier to do this now than during backpropagation
-        for child in legalChildren:
-            child.avails += 1
-
-        # Return the child selected above
-        return s
-
-    def add_child(self, m, p):
-        """ Add a new child node for the move m.
-            Return the added child node
-        """
-        n = Node(move=m, parent=self, playerJustMoved=p)
-        self.childNodes.append(n)
-        return n
-
-    def update(self, terminalState):
-        """ Update this node - increment the visit count by one, and increase the win count by the result of terminalState for self.playerJustMoved.
-        """
-        self.visits += 1
-        if self.playerJustMoved is not None:
-            self.wins += terminalState.get_result(self.playerJustMoved)
-
-    def __repr__(self):
-        return "[M:%s W/V/A: %4i/%4i/%4i]" % (self.move, self.wins, self.visits, self.avails)
-
-    def tree_to_string(self, indent):
-        """ Represent the tree as a string, for debugging purposes.
-        """
-        s = self.IndentString(indent) + str(self)
-        for c in self.childNodes:
-            s += c.tree_to_string(indent + 1)
-        return s
-
-    def IndentString(self, indent):
-        s = "\n"
-        for i in range(1, indent + 1):
-            s += "| "
-        return s
-
-    def children_to_string(self):
-        print("Showing statistic:")
-        s = ""
-        for c in self.childNodes:
-            s += str(c) + "\n"
-        return s
-
-
-def get_single_player_move(state):
+def get_single_player_move(state: 'LoveLetterState') -> Tuple[Card, Player, Card]:
     """
     User selects card and victim.
     :param state:
@@ -501,24 +343,27 @@ def play_game():
     """
     state = LoveLetterState(2)
     state.start_new_round()
-    real_player = None
+    real_player = state.user_ctl.users[0]
+    state.real_players.append(real_player)
     # take card from deck
     print("You are {}".format(real_player))
+    print("Your hand is: [", ",".join(str(card) for card in state.playerHands[real_player]), "]")
     while not state.game_over:
-        victim, victim_card = None, None
+        victim, guess = None, None
 
         if state.playerToMove == real_player:
-            move, victim, victim_card = get_single_player_move(state)
+            move, victim, guess = get_single_player_move(state)
             print("You play with {}".format(move))
         else:
             print("\n", state)
-            move = ISMCTS(rootstate=state, itermax=100, verbose=False)
+            move, victim, guess = ISMCTS(rootstate=state, itermax=4000, verbose=False)
             # print "Best Move: " + str(m) + "\n"
-        state.do_move(move, verbose=True, global_game=True, victim=victim, victim_card=victim_card)
+        state.do_move(move, verbose=True, global_game=True, victim=victim, guess=guess,
+                      real_player=True)
 
     for player in state.user_ctl.users:
         if state.tricksTaken[player] == 4:
-            print("Player " + str(player) + " wins!")
+            print("Player " + str(player) + " wins the game!")
 
 
 if __name__ == "__main__":

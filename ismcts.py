@@ -1,15 +1,24 @@
 import random
+from typing import Tuple
 
-from .game import Node
-from strategy import get_optimal_move
+from node import Node
+from strategy import get_optimal_move, clean_wrong_guesses, clean_cards, get_guess_card
+from collections import defaultdict
+from cardclasses import Princess, Guard, Priest, Countess, King, Prince, Card
 
 
-def ISMCTS(rootstate, itermax, verbose=False):
+def ISMCTS(rootstate: 'LoveLetterState', itermax: int, verbose: bool=True) -> Tuple['Card', 'Player', "Card"]:
     """ Conduct an ISMCTS search for itermax iterations starting from rootstate.
         Return the best move from the rootstate.
     """
-
+    wins = defaultdict(int)
     rootnode = Node()
+
+    # (King, Countess) or (Prince, Countess)
+    if Countess() in rootstate.playerHands[rootstate.playerToMove] and \
+        (King() in rootstate.playerHands[rootstate.playerToMove] or
+         Prince() in rootstate.playerHands[rootstate.playerToMove]):
+        return Countess(), None, None
 
     for i in range(itermax):
         node = rootnode
@@ -17,49 +26,54 @@ def ISMCTS(rootstate, itermax, verbose=False):
         # Determinize
         state = rootstate.clone_and_randomize()
         # Select
+        assert len(state.playerHands[state.playerToMove]) == 2
         while not state.round_over and not node.get_untried_moves(state.get_moves()):
+            victim, guess = None, None
             # node is fully expanded and non-terminal
             available_moves = state.get_moves()
 
             node = node.ucb_select_child(available_moves)
 
-            move = state.check_move(node.move, available_moves)
-            # state.clean_wrong_guesses(move)
-            state.do_move(move)
+            move = node.move
+            if move.name == "Guard":
+                victim, guess = get_guess_card(state.playerToMove, state.seen_cards)
+            state.do_move(move, victim=victim, guess=guess)
 
         # Expand
-        untriedMoves = node.get_untried_moves(state.get_moves())
+        untried_moves = node.get_untried_moves(state.get_moves())
 
-        if untriedMoves and not state.round_over:  # if we can expand (i.e. state/node is non-terminal)
+        if untried_moves and not state.round_over:  # if we can expand (i.e. state/node is non-terminal)
             # at expansion step algorithm chooses node randomly
-            m = random.choice(untriedMoves)
-            # state.clean_wrong_guesses()
-            state.do_move(m)
-            node = node.add_child(m, state.playerToMove)  # add child and descend tree
+            assert len(state.playerHands[state.playerToMove]) == 2
+            move, victim, guess = get_optimal_move(state.playerToMove, untried_moves, state.used_cards, state.wrong_guesses,
+                                                   state.user_ctl.users,
+                                                   state.seen_cards)
+
+            node = node.add_child(move, state.playerToMove)  # add child and descend tree
+            state.do_move(move, victim=victim, guess=guess)
 
         # Simulate
         while not state.round_over and state.get_moves():  # while state is non-terminal
             # TODO: smart move selection
-            m = get_optimal_move(state.get_moves(), state.used_cards, state.wrong_guesses, state.user_ctl.users,
-                                 state.seen_cards[state.playerToMove])
-            # m = state.check_move(m, state.get_moves())
+            move, victim, guess = get_optimal_move(state.playerToMove, state.get_moves(), state.used_cards, state.wrong_guesses, state.user_ctl.users,
+                                 state.seen_cards)
 
-            # state.clean_wrong_guesses(m)
-            state.do_move(m)
-
+            assert len(state.playerHands[state.playerToMove]) == 2
+            state.do_move(move, victim=victim, guess=guess)
 
         # Backpropagate
+        wins[state.playerToMove] += 1
         while node:  # backpropagate from the expanded node and work back to the root node
             node.update(state)
             node = node.parentNode
 
     # Output some information about the tree - can be omitted
     if verbose:
-        print(rootnode.tree_to_string(0))
-    else:
         print(rootnode.children_to_string())
 
     final_move = max(rootnode.childNodes, key=lambda c: c.visits).move  # return the move that was most visited
-    if final_move.name == "Princess":
-        final_move = rootnode.childNodes[0].move if rootnode.childNodes[0].move != 'Princess' else rootnode.childNodes[1]
-    return final_move
+    if final_move.name == "Guard":
+        victim, guess = get_guess_card(rootstate.playerToMove, rootstate.seen_cards)
+        if guess:
+            return Guard(), victim, guess
+    return final_move, None, None
