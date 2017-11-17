@@ -11,7 +11,6 @@ def ISMCTS(rootstate: 'LoveLetterState', itermax: int, verbose: bool=True) -> Tu
     """ Conduct an ISMCTS search for itermax iterations starting from rootstate.
         Return the best move from the rootstate.
     """
-    wins = defaultdict(int)
     rootnode = Node()
 
     # (King, Countess) or (Prince, Countess)
@@ -54,7 +53,6 @@ def ISMCTS(rootstate: 'LoveLetterState', itermax: int, verbose: bool=True) -> Tu
 
         # Simulate
         while not state.round_over and state.get_moves():  # while state is non-terminal
-            # TODO: smart move selection
             move, victim, guess = get_optimal_move(state.playerToMove, state.get_moves(), state.used_cards, state.wrong_guesses, state.user_ctl.users,
                                  state.seen_cards)
 
@@ -62,7 +60,6 @@ def ISMCTS(rootstate: 'LoveLetterState', itermax: int, verbose: bool=True) -> Tu
             state.do_move(move, victim=victim, guess=guess)
 
         # Backpropagate
-        wins[state.playerToMove] += 1
         while node:  # backpropagate from the expanded node and work back to the root node
             node.update(state)
             node = node.parentNode

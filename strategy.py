@@ -111,19 +111,9 @@ def clean_cards(move, wrong_guesses, seen_cards, player_to_move):
         wrong_guesses.clear()
 
 
-def remove_seen_card(seen_cards, current_player, card):
-    for player in seen_cards:
-        if card in seen_cards[player][current_player]:
-            seen_cards[player][current_player].remove(card)
-
-
 def get_guess_card(current_player, seen_cards):
     # attack with guard if player knows card
     for player in seen_cards[current_player]:
-        if len(seen_cards[current_player][player]) == 2:
-            print(current_player, player, seen_cards[current_player][player])
-        assert len(seen_cards[current_player][player]) <= 1
-
         if seen_cards[current_player][player] and not player.lost and not player.defence:
             for guess in seen_cards[current_player][player]:
                 if guess.name != "Guard":
@@ -144,11 +134,6 @@ def get_optimal_move(current_player, available_moves, used_cards, wrong_guesses,
     baron = Baron()
 
     victim, guess = get_guess_card(current_player, seen_cards)
-    # for player in seen_cards[current_player]:
-    #     if seen_cards[current_player][player] and not player.lost and not player.defence:
-    #         victim = player
-    #         guess = seen_cards[current_player][player][0]
-    #         break
 
     if guard in available_moves and victim:
         return guard, victim, guess
@@ -174,14 +159,12 @@ def get_optimal_move(current_player, available_moves, used_cards, wrong_guesses,
 
     # if one of current player's cards were seen by priest
     if available_moves[0] in watched_cards:
-        remove_seen_card(seen_cards, current_player, available_moves[0])
         return available_moves[0], None, None
 
-    if available_moves[1] in seen_cards and available_moves[1] != Princess():
+    if available_moves[1] in watched_cards and available_moves[1] != Princess():
         if available_moves[0] == maid:
             return maid, None, None
         else:
-            remove_seen_card(seen_cards, current_player, available_moves[1])
             return available_moves[1], None, None
 
     return available_moves[0], None, None

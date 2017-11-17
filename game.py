@@ -39,7 +39,7 @@ class LoveLetterState:
 
     def get_winner(self):
         winner = self.user_ctl.users[0] if self.user_ctl.users[0].won_round else self.user_ctl.users[1]
-        assert winner
+        assert winner.won_round
         return winner
 
     def clone(self) -> 'LoveLetterState':
@@ -131,7 +131,7 @@ class LoveLetterState:
 
     def start_new_round(self, first_player: 'Player'=None) -> None:
         """
-        :param first_player: player(instance of User class) who starts current round. If None, then random player starts round 
+        :param first_player: player(instance of User class) who starts current round. If None, then random player starts round
         :return:  
         """
         self.round += 1
@@ -151,10 +151,13 @@ class LoveLetterState:
         #  if there is winner in previous round, then he or she starts the next round
         if first_player:
             # place player on first position in player list
-            for index, user in enumerate(self.user_ctl.users):
-                if index > 0 and user == first_player:
-                    self.user_ctl.users[index], self.user_ctl.users[0] = self.user_ctl.users[0], user
-                    break
+            winner_index = self.user_ctl.users.index(first_player)
+            # cyclic shift of players
+            self.user_ctl.users = self.user_ctl.users[winner_index:] + self.user_ctl.users[:winner_index]
+            # for index, user in enumerate(self.user_ctl.users):
+            #     if index > 0 and user == first_player:
+            #         self.user_ctl.users[index], self.user_ctl.users[0] = self.user_ctl.users[0], user
+            #         break
 
         self.used_cards = defaultdict(int)
         self.currentTrick = []
@@ -168,6 +171,7 @@ class LoveLetterState:
         self.playerToMove = self.user_ctl.get_current_player()
         self.playerToMove.take_card(self)
 
+        # print real user hand when bot starts round
         if self.real_players and self.user_ctl.users[0] != self.real_players[0]:
             print("Your new hand is: ", self.playerHands[self.real_players[0]])
 
@@ -319,7 +323,7 @@ def get_single_player_move(state: 'LoveLetterState') -> Tuple[Card, Player, Card
     if move == Countess():
         return move, None, card
 
-    # if maid is selected, activate it on player (Rationality assumption)
+    # if maid is selected, activate it on player
     if move == Maid():
         return move, state.playerToMove, card
 
@@ -350,13 +354,12 @@ def play_game():
     print("Your hand is: [", ",".join(str(card) for card in state.playerHands[real_player]), "]")
     while not state.game_over:
         victim, guess = None, None
-
+        print("\n", state)
         if state.playerToMove == real_player:
             move, victim, guess = get_single_player_move(state)
             print("You play with {}".format(move))
         else:
-            print("\n", state)
-            move, victim, guess = ISMCTS(rootstate=state, itermax=4000, verbose=False)
+            move, victim, guess = ISMCTS(rootstate=state, itermax=4000)
             # print "Best Move: " + str(m) + "\n"
         state.do_move(move, verbose=True, global_game=True, victim=victim, guess=guess,
                       real_player=True)

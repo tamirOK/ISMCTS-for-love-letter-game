@@ -244,7 +244,7 @@ class Guard(Card):
                 if not victim_card:
                     victim_card = available_cards[0][1]
 
-            assert(victim_card)
+            assert victim_card
 
             if victim_card in game.playerHands[victim]:
                 game.used_cards[victim_card] += 1
