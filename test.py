@@ -4,7 +4,7 @@ import pytest
 
 from game import LoveLetterState, PlayerCtl, Player
 from cardclasses import Guard, King, Priest, Princess, Prince, Countess, Maid
-from ismcts import ISMCTS
+from ismcts import Smart_ISMCTS, ISMCTS
 from strategy import get_guess_card
 
 
@@ -39,7 +39,7 @@ def test_guard_when_card_is_known(init_game):
 
     game.seen_cards[player1][player2].append(Priest())
 
-    assert ISMCTS(game, itermax=1000) == (Guard(), player2, Priest())
+    assert Smart_ISMCTS(game, itermax=1000) == (Guard(), player2, Priest())
 
 
 def test_not_playing_with_princess(init_game):

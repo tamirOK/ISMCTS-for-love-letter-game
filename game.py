@@ -6,7 +6,7 @@ import random
 from typing import List, Tuple
 
 from cardclasses import Guard, Priest, Baron, Maid, Prince, King, Countess, Princess, card_dict, Card
-from ismcts import ISMCTS
+from ismcts import ISMCTS, Smart_ISMCTS
 from player import Player, PlayerCtl
 from strategy import clean_cards
 
@@ -16,7 +16,7 @@ class LoveLetterState:
      A state of the game love letter.
     """
 
-    def __init__(self, n: str) -> None:
+    def __init__(self, n: int) -> None:
         """ Initialise the game state which are constant during the game. 
             n is the number of players (from 2 to 4).
         """
@@ -28,6 +28,8 @@ class LoveLetterState:
         self.wrong_guesses = defaultdict(list)
         self.seen_cards = defaultdict(lambda: defaultdict(list))
         self.real_players = []
+        if n == 2:
+            self.tricks_taken_limit = 100
 
     def select_outcard(self) -> 'Card':
         """
@@ -42,7 +44,7 @@ class LoveLetterState:
         assert winner.won_round
         return winner
 
-    def clone(self) -> 'LoveLetterState':
+    def clone(self, **kwargs) -> 'LoveLetterState':
         """ Create a deep clone of this game state.
         """
         st = LoveLetterState(self.numberOfPlayers)
@@ -56,6 +58,7 @@ class LoveLetterState:
         st.wrong_guesses = deepcopy(self.wrong_guesses)
         st.game_over = self.game_over
         st.deck = st.get_card_deck()
+        st.tricks_taken_limit = self.tricks_taken_limit
 
         for card, counter in st.used_cards.items():
             for _ in range(counter):
@@ -67,7 +70,7 @@ class LoveLetterState:
 
         return st
 
-    def clone_and_randomize(self) -> 'LoveLetterState':
+    def clone_and_randomize(self, **kwargs) -> 'LoveLetterState':
         """ Create a deep clone of this game state, randomizing any information not visible to the specified observer player.
         """
         st = self.clone()
@@ -81,7 +84,7 @@ class LoveLetterState:
         # assign random cards for other users
         for user in st.user_ctl.users:
             if user != st.playerToMove and not user.lost:
-                if st.seen_cards[st.playerToMove][user]:
+                if not kwargs.get('vanilla', False) and st.seen_cards[st.playerToMove][user]:
                     taken_card = random.choice(st.seen_cards[st.playerToMove][user])
                     st.playerHands[user].append(taken_card)
                     st.deck.remove(taken_card)
@@ -228,7 +231,7 @@ class LoveLetterState:
             self.tricksTaken[winner] += 1
             winner.won_round = True
 
-            if self.tricksTaken[winner] == 4:
+            if self.tricksTaken[winner] == self.tricks_taken_limit:
                 self.game_over = True
 
             self.round_over = True
@@ -347,25 +350,34 @@ def play_game():
     """
     state = LoveLetterState(2)
     state.start_new_round()
-    real_player = state.user_ctl.users[0]
-    state.real_players.append(real_player)
+
+    smart_ismcts = Smart_ISMCTS()
+    plain_ismct = ISMCTS()
+
+    # real_player = state.user_ctl.users[0]
+    player1 = state.user_ctl.users[0]
+    player2 = state.user_ctl.users[1]
+    print("{} plays using plain ISMCTS".format(player2))
+    print("{} plays using ISMCTS with domain knowledge".format(player1))
+    # state.real_players.append(real_player)
     # take card from deck
-    print("You are {}".format(real_player))
-    print("Your hand is: [", ",".join(str(card) for card in state.playerHands[real_player]), "]")
+    # print("You are {}".format(real_player))
+    # print("Your hand is: [", ",".join(str(card) for card in state.playerHands[real_player]), "]")
     while not state.game_over:
         victim, guess = None, None
         print("\n", state)
-        if state.playerToMove == real_player:
-            move, victim, guess = get_single_player_move(state)
-            print("You play with {}".format(move))
+        if state.playerToMove == player1:
+            # move, victim, guess = get_single_player_move(state)
+            # print("You play with {}".format(move))
+            move, victim, guess = smart_ismcts.get_move(rootstate=state, itermax=1000)
         else:
-            move, victim, guess = ISMCTS(rootstate=state, itermax=4000)
+            move, victim, guess = plain_ismct.get_move(rootstate=state, itermax=1000)
             # print "Best Move: " + str(m) + "\n"
         state.do_move(move, verbose=True, global_game=True, victim=victim, guess=guess,
-                      real_player=True)
+                      real_player=False, vanilla=True if state.playerToMove == player2 else False)
 
     for player in state.user_ctl.users:
-        if state.tricksTaken[player] == 4:
+        if state.tricksTaken[player] == state.tricks_taken_limit:
             print("Player " + str(player) + " wins the game!")
 
 

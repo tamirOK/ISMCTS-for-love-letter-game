@@ -223,26 +223,34 @@ class Guard(Card):
 
             if not victim_card:
 
-                for card, counter in game.used_cards.items():
-                    # ignore guard because it cannot be guessed
-                    if card.name != 'Guard':
-                        card_count[card] -= counter
+                if kwargs.get('vanilla', False):
+                    possible_cards = []
 
-                for card in game.playerHands[game.playerToMove] + game.wrong_guesses[game.playerToMove]:
-                    if card.name != 'Guard':
-                        card_count[card] -= 1
+                    for card in card_count:
+                        for _ in range(card_count[card]):
+                            possible_cards.append(card)
 
-                for player, card in game.currentTrick:
-                    if player == victim and card.name == "Countess":
-                        if card_count[King()] > 0:
-                            victim_card = King()
-                        elif card_count[Prince()] > 0:
+                    victim_card = random.choice(possible_cards)
+                else:
+                    for card, counter in game.used_cards.items():
+                        # ignore guard because it cannot be guessed
+                        if card.name != 'Guard':
+                            card_count[card] -= counter
+
+                    for card in game.playerHands[game.playerToMove] + game.wrong_guesses[game.playerToMove]:
+                        if card.name != 'Guard':
+                            card_count[card] -= 1
+
+                    if game.currentTrick and game.currentTrick[-1][1].name == "Countess":
+                        if card_count[Prince()] > 0:
                             victim_card = Prince()
+                        elif card_count[King()] > 0:
+                            victim_card = King()
 
-                available_cards = sorted([(counter, card) for card, counter in card_count.items()], reverse=True)
-                # victim_card = random.choice(available_cards) if available_cards else None
-                if not victim_card:
-                    victim_card = available_cards[0][1]
+                    available_cards = sorted([(counter, card) for card, counter in card_count.items()], reverse=True)
+                    most_probable_cards = [card for counter, card in available_cards if counter == available_cards[0][0]]
+                    if not victim_card:
+                        victim_card = random.choice(most_probable_cards)
 
             assert victim_card
 
@@ -250,7 +258,7 @@ class Guard(Card):
                 game.used_cards[victim_card] += 1
                 game.user_ctl.kill(victim)
                 if verbose:
-                    print("{} kicks out {} via Guard".format(game.playerToMove, victim))
+                    print("{} kicks out {} via Guard with guess {}".format(game.playerToMove, victim, victim_card))
             else:
                 game.wrong_guesses[victim].append(victim_card)
                 if verbose:
