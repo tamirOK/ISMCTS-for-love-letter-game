@@ -9,6 +9,7 @@ from cardclasses import Guard, Priest, Baron, Maid, Prince, King, Countess, Prin
 from ismcts import ISMCTS, Smart_ISMCTS
 from player import Player, PlayerCtl
 from strategy import clean_cards
+from playing_mode import PlayingMode
 
 
 class LoveLetterState:
@@ -305,77 +306,21 @@ class LoveLetterState:
         return result
 
 
-def get_single_player_move(state: 'LoveLetterState') -> Tuple[Card, Player, Card]:
-    """
-    User selects card and victim.
-    :param state:
-    :return: Move that user selected, victim that user selected, and card to guess (for Guard only)
-    """
-    card = None
-
-    print("\nNow is your turn, {}. Choose card to move:".format(state.playerToMove))
-    print("[", " ".join(str(card) for card in state.get_moves()), "]")
-
-    # deactivate defense from previous move
-    state.playerToMove.defence = False
-
-    move_index = int(input())
-    move = state.get_moves()[move_index]
-
-    # simple case when player does not need to select victim
-    if move == Countess():
-        return move, None, card
-
-    # if maid is selected, activate it on player
-    if move == Maid():
-        return move, state.playerToMove, card
-
-    print("Now select victim")
-    left_players = [player for player in state.user_ctl.users
-                    if not player.defence and not player.lost]
-    print(left_players)
-    victim_index = int(input())
-
-    if move == Guard():
-        print("Select card to guess:")
-        selected_card = str(input())
-        card = card_dict[selected_card]
-
-    return move, left_players[victim_index], card
-
-
 def play_game():
     """ 
-    Play a sample game between 4 ISMCTS players.
+    Play a sample game between 2-4 ISMCTS players.
     """
     state = LoveLetterState(2)
     state.start_new_round()
+    mode = PlayingMode(state, "compare_bots")
 
-    smart_ismcts = Smart_ISMCTS()
-    plain_ismct = ISMCTS()
-
-    # real_player = state.user_ctl.users[0]
-    player1 = state.user_ctl.users[0]
-    player2 = state.user_ctl.users[1]
-    print("{} plays using plain ISMCTS".format(player2))
-    print("{} plays using ISMCTS with domain knowledge".format(player1))
-    # state.real_players.append(real_player)
-    # take card from deck
-    # print("You are {}".format(real_player))
-    # print("Your hand is: [", ",".join(str(card) for card in state.playerHands[real_player]), "]")
     while not state.game_over:
-        victim, guess = None, None
         print("\n", state)
-        if state.playerToMove == player1:
-            # move, victim, guess = get_single_player_move(state)
-            # print("You play with {}".format(move))
-            move, victim, guess = smart_ismcts.get_move(rootstate=state, itermax=1000)
-        else:
-            move, victim, guess = plain_ismct.get_move(rootstate=state, itermax=1000)
-            # print "Best Move: " + str(m) + "\n"
+        move, victim, guess = mode.get_move()
         state.do_move(move, verbose=True, global_game=True, victim=victim, guess=guess,
-                      real_player=False, vanilla=True if state.playerToMove == player2 else False)
+                      real_player=False, vanilla=True if state.playerToMove == state.user_ctl.users[1] else False)
 
+    # determine a winner
     for player in state.user_ctl.users:
         if state.tricksTaken[player] == state.tricks_taken_limit:
             print("Player " + str(player) + " wins the game!")
