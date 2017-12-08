@@ -1,5 +1,7 @@
 from collections import defaultdict
 
+import random
+
 from cardclasses import Guard, Priest, Baron, Maid, Prince, King, Countess, Princess
 
 move_matrix = None
@@ -26,11 +28,14 @@ def get_guess_card(current_player, seen_cards):
     return victim, None
 
 
-def get_optimal_move(current_player, available_moves, used_cards, wrong_guesses, users, seen_cards, hand, cards_left):
+def get_optimal_move(current_player, available_moves, used_cards, wrong_guesses, users, seen_cards, hand, cards_left, **kwargs):
 
     # if only one card is available, make move with the card
     if len(available_moves) == 1:
         return available_moves[0], None, None
+
+    if kwargs.get('random', False):
+        return random.choice(available_moves), None, None
 
     maid = Maid()
     guard = Guard()

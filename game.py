@@ -29,7 +29,7 @@ class LoveLetterState:
         self.seen_cards = defaultdict(lambda: defaultdict(list))
         self.real_players = []
         if n == 2:
-            self.tricks_taken_limit = 100
+            self.tricks_taken_limit = 50
 
     def select_outcard(self) -> 'Card':
         """

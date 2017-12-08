@@ -39,7 +39,7 @@ def test_guard_when_card_is_known(init_game):
 
     game.seen_cards[player1][player2].append(Priest())
 
-    assert Smart_ISMCTS(game, itermax=1000) == (Guard(), player2, Priest())
+    assert Smart_ISMCTS().get_move(game, itermax=1000) == (Guard(), player2, Priest())
 
 
 def test_not_playing_with_princess(init_game):
@@ -56,7 +56,7 @@ def test_not_playing_with_princess(init_game):
     game.playerHands[player1].extend([Princess(), King()])
     game.playerHands[player2].append(Priest())
 
-    assert ISMCTS(game, itermax=1000) == (King(), None, None)
+    assert Smart_ISMCTS().get_move(game, itermax=1000) == (King(), None, None)
 
 
 def test_king_when_card_is_known(init_game):
@@ -74,7 +74,7 @@ def test_king_when_card_is_known(init_game):
 
     game.do_move(King())
 
-    assert ISMCTS(game, itermax=100) == (Guard(), player1, Priest())
+    assert Smart_ISMCTS().get_move(game, itermax=100) == (Guard(), player1, Priest())
 
 
 def test_prince_when_pricess_is_known(init_game):
@@ -89,7 +89,7 @@ def test_prince_when_pricess_is_known(init_game):
     game.deck.remove(King())
     game.deck.remove(Princess())
 
-    assert(ISMCTS(game, itermax=100)[0] == Prince())
+    assert Smart_ISMCTS().get_move(game, itermax=100)[0] == Prince()
 
 
 def test_priest_and_guard(init_game):
