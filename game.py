@@ -86,6 +86,7 @@ class LoveLetterState:
         for user in st.user_ctl.users:
             if user != st.playerToMove and not user.lost:
                 if not kwargs.get('vanilla', False) and st.seen_cards[st.playerToMove][user]:
+                    assert len(st.seen_cards[st.playerToMove][user]) <= 1
                     taken_card = random.choice(st.seen_cards[st.playerToMove][user])
                     st.playerHands[user].append(taken_card)
                     st.deck.remove(taken_card)
