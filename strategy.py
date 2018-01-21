@@ -12,20 +12,18 @@ def clean_cards(move, wrong_guesses, seen_cards, player_to_move):
         if move in seen_cards[player][player_to_move]:
             seen_cards[player][player_to_move].remove(move)
 
-    if not move in wrong_guesses:
+    if move not in wrong_guesses:
         wrong_guesses.clear()
 
 
 def get_guess_card(current_player, seen_cards):
     # attack with guard if player knows card
-    victim = None
     for player in seen_cards[current_player]:
         if player != current_player and seen_cards[current_player][player] and not player.lost and not player.defence:
             for guess in seen_cards[current_player][player]:
-                victim = player
                 if guess.name != "Guard":
                     return player, guess
-    return victim, None
+    return None, None
 
 
 def get_optimal_move(current_player, available_moves, used_cards, wrong_guesses, users, seen_cards, hand, cards_left, **kwargs):

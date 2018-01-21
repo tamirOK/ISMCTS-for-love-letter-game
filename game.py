@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from collections import defaultdict
-from copy import deepcopy
+from copy import deepcopy, copy
 import random
 from typing import List, Tuple
 
@@ -17,7 +17,7 @@ class LoveLetterState:
      A state of the game love letter.
     """
 
-    def __init__(self, n: int) -> None:
+    def __init__(self, n: int, decks: List['Card'] = None) -> None:
         """ Initialise the game state which are constant during the game. 
             n is the number of players (from 2 to 4).
         """
@@ -29,16 +29,9 @@ class LoveLetterState:
         self.wrong_guesses = defaultdict(list)
         self.seen_cards = defaultdict(lambda: defaultdict(list))
         self.real_players = []
+        self.decks = decks
         if n == 2:
-            self.tricks_taken_limit = 50
-
-    def select_outcard(self) -> 'Card':
-        """
-        Choosing outcard with uniform probability
-        :return: out_card
-        """
-        unique_cards = list(set(self.deck))
-        return random.choice(unique_cards)
+            self.tricks_taken_limit = 40
 
     def get_winner(self):
         winner = self.user_ctl.users[0] if self.user_ctl.users[0].won_round else self.user_ctl.users[1]
@@ -51,19 +44,35 @@ class LoveLetterState:
         st = LoveLetterState(self.numberOfPlayers)
         st.round = self.round
         st.playerHands = defaultdict(list)
-        st.used_cards = deepcopy(self.used_cards)
-        st.currentTrick = deepcopy(self.currentTrick)
-        st.tricksTaken = deepcopy(self.tricksTaken)
+        st.used_cards = copy(self.used_cards)
+        st.currentTrick = copy(self.currentTrick)
+        st.tricksTaken = copy(self.tricksTaken)
         st.seen_cards = deepcopy(self.seen_cards)
         st.round_over = self.round_over
         st.wrong_guesses = deepcopy(self.wrong_guesses)
         st.game_over = self.game_over
-        st.deck = st.get_card_deck()
+        st.deck = []
+
+        card_count = {
+            Princess(): 1,
+            Countess(): 1,
+            King(): 1,
+            Prince(): 2,
+            Maid(): 2,
+            Baron(): 2,
+            Priest(): 2,
+            Guard(): 5,
+        }
+
         st.tricks_taken_limit = self.tricks_taken_limit
 
         for card, counter in st.used_cards.items():
             for _ in range(counter):
-                st.deck.remove(card)
+                card_count[card] -= 1
+
+        for card, counter in card_count.items():
+            if counter > 0:
+                st.deck.extend([card] * counter)
 
         random.shuffle(st.deck)
         st.user_ctl = self.user_ctl.clone()
@@ -142,14 +151,16 @@ class LoveLetterState:
         self.round += 1
         self.round_over = False
 
+        for user in self.tricksTaken:
+            print("{} -> {}".format(user, self.tricksTaken[user]))
+
         if not hasattr(self, "user_ctl"):
             self.user_ctl = PlayerCtl(self.numberOfPlayers)
             self.user_ctl.shuffle()
         else:
             self.user_ctl.reset()
 
-        self.deck = self.get_card_deck()
-        random.shuffle(self.deck)
+        self.deck = copy(random.choice(self.decks))
         # remove one card from deck and remember it
         self.out_card = self.deck.pop()
         self.playerHands = {user: [] for user in self.user_ctl.users}
@@ -262,7 +273,7 @@ class LoveLetterState:
             winner = cards[0][0]
             winner.won_round = True
             self.tricksTaken[winner] += 1
-            if self.tricksTaken[winner] == 4:
+            if self.tricksTaken[winner] == self.tricks_taken_limit:
                 self.game_over = True
 
             self.round_over = True
@@ -273,25 +284,9 @@ class LoveLetterState:
             # Find the next player
             previous_player = self.playerToMove
             self.playerToMove = self.user_ctl.get_current_player()
-
             # check that there are more that one player
             assert previous_player != self.playerToMove
             self.playerToMove.take_card(self)
-
-    def get_result(self, player):
-        """ Get the game result from the viewpoint of player. 
-        """
-        return 1 if player.won_round else 0
-
-    def take_card_from_deck(self):
-        self.playerHands[self.playerToMove].append(self.deck.pop())
-
-    def check_move(self, move, available_moves):
-
-        # do not allow to make move with princess card
-        while move == Princess():
-            move = random.choice(available_moves)
-        return move
 
     def __repr__(self):
         """ Return a human-readable representation of the state
@@ -311,20 +306,36 @@ def play_game():
     """ 
     Play a sample game between 2-4 ISMCTS players.
     """
-    state = LoveLetterState(2)
-    state.start_new_round()
-    mode = PlayingMode(state, "compare_bots")
+    results = []
+    decks = []
 
-    while not state.game_over:
-        print("\n", state)
-        move, victim, guess = mode.get_move()
-        state.do_move(move, verbose=True, global_game=True, victim=victim, guess=guess,
-                      real_player=False, vanilla=True if state.playerToMove == state.user_ctl.users[1] else False)
+    # use decks specified in advance
+    with open('decks.txt') as f:
+        for line in f:
+            splitted = line.split()
+            decks.append([card_dict[card] for card in splitted])
 
-    # determine a winner
-    for player in state.user_ctl.users:
-        if state.tricksTaken[player] == state.tricks_taken_limit:
-            print("Player " + str(player) + " wins the game!")
+    for iterations in (1000, 2000, 4000, 8000):
+        state = LoveLetterState(2, decks)
+        state.start_new_round()
+        mode = PlayingMode(state, "compare_bots")
+
+        while not state.game_over:
+            print("\n", state)
+            move, victim, guess = mode.get_move(iterations)
+            state.do_move(move, verbose=True, global_game=True, victim=victim, guess=guess,
+                          real_player=False, vanilla=True if state.playerToMove == state.user_ctl.users[1] else False)
+
+        # determine a winner
+        for player in state.user_ctl.users:
+            if state.tricksTaken[player] == state.tricks_taken_limit:
+                print("Player " + str(player) + " wins the game!")
+                results.append((player, state.round))
+
+        print("#" * 80)
+
+    for x, y in results:
+        print(x, y)
 
 
 if __name__ == "__main__":

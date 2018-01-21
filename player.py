@@ -25,10 +25,11 @@ class Player:
 
 
 class PlayerCtl:
-    def __init__(self, number_of_players:int):
+    def __init__(self, number_of_players:int, **kwargs):
 
-        self.users = [Player(uid) for uid in range(1, number_of_players + 1)]
-        self.next_player_index = 0
+        if not kwargs.get('skip', False):
+            self.users = [Player(uid) for uid in range(1, number_of_players + 1)]
+            self.next_player_index = 0
 
     def add(self, user):
         self.users.append(user)
@@ -65,13 +66,12 @@ class PlayerCtl:
                 victims.append(user)
         return victims
 
-
     def clone(self):
         """
         clones current user ctl
         :return: deep clone
         """
-        cloned = PlayerCtl(len(self.users))
+        cloned = PlayerCtl(len(self.users), skip=True)
         cloned.users = [Player(user.uid, user.lost, user.defence) for user in self.users]
         cloned.next_player_index = self.next_player_index
         return cloned
@@ -84,7 +84,7 @@ class PlayerCtl:
             if not player.lost:
                 return player
 
-        raise AssertionError("Error happened!")
+        raise AssertionError("No players left!")
 
     def reset(self):
         self.next_player_index = 0

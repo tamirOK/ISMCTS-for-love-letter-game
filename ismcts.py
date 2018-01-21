@@ -1,5 +1,5 @@
 import random
-from typing import Tuple
+from typing import Tuple, Union
 
 from node import Node
 from strategy import get_optimal_move, clean_cards, get_guess_card
@@ -76,12 +76,21 @@ class ISMCTS:
         final_move = max(rootnode.childNodes, key=lambda c: c.visits).move  # return the move that was most visited
         return final_move, None, None
 
-    def get_move(self, rootstate: 'LoveLetterState', itermax: int, verbose: bool = True, **kwargs)-> Tuple['Card', 'Player', "Card"]:
+    def get_move(self, rootstate: 'LoveLetterState', itermax: int, verbose: bool = True, **kwargs)-> Tuple['Card', Union['Player', None], Union["Card", None]]:
         """ Conduct an ISMCTS search for itermax iterations starting from rootstate.
             Return the best move from the rootstate.
         """
         if self.check_countess(rootstate):
             return Countess(), None, None
+
+        moves = rootstate.get_moves()
+
+        if len(moves) == 1 or moves[0] == moves[1]:
+            if moves[0].name == "Guard":
+                victim, guess = get_guess_card(rootstate.playerToMove, rootstate.seen_cards)
+                if guess:
+                    return moves[0], victim, guess
+            return moves[0], None, None
 
         rootnode = Node()
 
@@ -111,7 +120,7 @@ class Smart_ISMCTS(ISMCTS):
         kwargs['extra'] = True
         return super().select(state, node, **kwargs)
 
-    def get_move(self, rootstate: 'LoveLetterState', itermax: int, verbose: bool = True, **kwargs):
+    def get_move(self, rootstate: 'LoveLetterState', itermax: int, verbose: bool = False, **kwargs):
         return super().get_move(rootstate, itermax, verbose=True, vanilla=False)
 
     def select_final_move(self, rootnode, rootstate):

@@ -3,6 +3,7 @@ from typing import List, Tuple
 from cardclasses import Guard, Priest, Baron, Maid, Prince, King, Countess, Princess, card_dict, Card
 from ismcts import Smart_ISMCTS, ISMCTS
 from player import Player
+from uct import Determinized_UCT
 
 
 class PlayingMode:
@@ -61,15 +62,16 @@ class PlayingMode:
         elif mode == "compare_bots":
             self.smart_ismcts = Smart_ISMCTS()
             self.plain_ismct = ISMCTS()
+            self.uct = Determinized_UCT()
             self.get_data = self.__compare_bots
 
             self.player1 = self.state.user_ctl.users[0]
             self.player2 = self.state.user_ctl.users[1]
 
-            print("{} plays using plain ISMCTS".format(self.player2))
-            print("{} plays using ISMCTS with domain knowledge".format(self.player1))
+            print("{} plays using smart ISMCTS".format(self.player2))
+            print("{} plays using determinized UCT".format(self.player1))
 
-    def __play_with_real_payer(self):
+    def __play_with_real_payer(self, iterations):
         if self.state.playerToMove == self.real_player:
             move, opponent, guess_card = self.__get_single_player_move(self.state)
             print("You play with {}".format(move))
@@ -77,11 +79,11 @@ class PlayingMode:
         else:
             return self.smart_ismcts.get_move(rootstate=self.state, itermax=1000)
 
-    def __compare_bots(self):
+    def __compare_bots(self, iterations):
         if self.state.playerToMove == self.player1:
-            return self.smart_ismcts.get_move(rootstate=self.state, itermax=1000)
+            return self.uct.get_move(rootstate=self.state, itermax=iterations)
         else:
-            return self.plain_ismct.get_move(rootstate=self.state, itermax=1000)
+            return self.smart_ismcts.get_move(rootstate=self.state, itermax=1000)
 
-    def get_move(self):
-        return self.get_data()
+    def get_move(self, iterations):
+        return self.get_data(iterations)

@@ -222,6 +222,15 @@ class Guard(Card):
             }
 
             if not victim_card:
+                # remove already played cards from candidates
+                for card, counter in game.used_cards.items():
+                    # ignore guard because it cannot be guessed
+                    if card.name != 'Guard':
+                        card_count[card] -= counter
+
+                for card in game.playerHands[game.playerToMove]:
+                    if card.name != 'Guard':
+                        card_count[card] -= 1
 
                 if kwargs.get('vanilla', False):
                     possible_cards = []
@@ -232,12 +241,8 @@ class Guard(Card):
 
                     victim_card = random.choice(possible_cards)
                 else:
-                    for card, counter in game.used_cards.items():
-                        # ignore guard because it cannot be guessed
-                        if card.name != 'Guard':
-                            card_count[card] -= counter
-
-                    for card in game.playerHands[game.playerToMove] + game.wrong_guesses[game.playerToMove]:
+                    # ignore cards that were guessed incorrectly
+                    for card in game.wrong_guesses[victim]:
                         if card.name != 'Guard':
                             card_count[card] -= 1
 
@@ -266,12 +271,12 @@ class Guard(Card):
 
 
 card_dict = {
-    'princess': Princess(),
-    'countess': Countess(),
-    'king': King(),
-    'priest': Priest(),
-    'maid': Maid(),
-    'baron': Baron(),
-    'guard': Guard(),
-    'prince': Prince(),
+    'Princess': Princess(),
+    'Countess': Countess(),
+    'King': King(),
+    'Priest': Priest(),
+    'Maid': Maid(),
+    'Baron': Baron(),
+    'Guard': Guard(),
+    'Prince': Prince(),
 }
