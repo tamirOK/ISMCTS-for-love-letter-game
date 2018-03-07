@@ -3,9 +3,11 @@ from collections import defaultdict
 import pytest
 
 from game import LoveLetterState, PlayerCtl, Player
-from cardclasses import Guard, King, Priest, Princess, Prince, Countess, Maid
+from cardclasses import *
 from ismcts import Smart_ISMCTS, ISMCTS
+from minimax import Minimax
 from strategy import get_guess_card
+from uct import Determinized_UCT
 
 
 @pytest.fixture
@@ -107,3 +109,21 @@ def test_priest_and_guard(init_game):
 
     game.do_move(King())
     assert game.seen_cards[player1][player2] == [Guard()]
+
+
+def test_minimax(init_game):
+    game, player1, player2 = init_game['game'], init_game['player1'], init_game['player2']
+
+    game.playerHands[player1].extend([Countess(), Guard()])
+    game.playerHands[player2].append(Priest())
+    game.deck.extend([Maid(), Prince()])
+    game.out_card = Princess()
+
+    game.used_cards[Guard()] = 4
+    game.used_cards[Priest()] = 1
+    game.used_cards[Baron()] = 2
+    game.used_cards[Prince()] = 1
+    game.used_cards[Maid()] = 1
+    game.used_cards[King()] = 1
+
+    Determinized_UCT().get_move(rootstate=game, itermax=5000, verbose=True)

@@ -2,11 +2,12 @@ import random
 
 
 class Player:
-    def __init__(self, uid:int, lost:bool=False, defence:bool=False):
+    def __init__(self, uid, lost=False, defence=False, algorithm=""):
         self.uid = uid
         self.lost = lost
         self.defence = defence
         self.won_round = False
+        self.algorithm = algorithm
 
     def take_card(self, state):
         state.playerHands[self].append(state.deck.pop())
@@ -21,11 +22,11 @@ class Player:
         return hash(self.uid)
 
     def __repr__(self):
-        return "User {0}".format(self.uid)
+        return "{0} [{1}]".format(getattr(self, 'name', 'User %s' % self.uid), self.algorithm)
 
 
 class PlayerCtl:
-    def __init__(self, number_of_players:int, **kwargs):
+    def __init__(self, number_of_players, **kwargs):
 
         if not kwargs.get('skip', False):
             self.users = [Player(uid) for uid in range(1, number_of_players + 1)]
@@ -72,7 +73,7 @@ class PlayerCtl:
         :return: deep clone
         """
         cloned = PlayerCtl(len(self.users), skip=True)
-        cloned.users = [Player(user.uid, user.lost, user.defence) for user in self.users]
+        cloned.users = [Player(user.uid, user.lost, user.defence, user.algorithm) for user in self.users]
         cloned.next_player_index = self.next_player_index
         return cloned
 

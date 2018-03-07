@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 
+import random
 from collections import defaultdict
 from copy import deepcopy, copy
-import random
-from typing import List, Tuple
 
 from cardclasses import Guard, Priest, Baron, Maid, Prince, King, Countess, Princess, card_dict, Card
-from ismcts import ISMCTS, Smart_ISMCTS
 from player import Player, PlayerCtl
-from strategy import clean_cards
 from playing_mode import PlayingMode
+from strategy import clean_cards
+from utils import TranspositionTable
 
 
 class LoveLetterState:
@@ -17,7 +16,7 @@ class LoveLetterState:
      A state of the game love letter.
     """
 
-    def __init__(self, n: int, decks: List['Card'] = None) -> None:
+    def __init__(self, n, decks=None):
         """ Initialise the game state which are constant during the game. 
             n is the number of players (from 2 to 4).
         """
@@ -30,23 +29,22 @@ class LoveLetterState:
         self.seen_cards = defaultdict(lambda: defaultdict(list))
         self.real_players = []
         self.decks = decks
-        if n == 2:
-            self.tricks_taken_limit = 40
+        self.tricks_taken_limit = 7
 
     def get_winner(self):
-        winner = self.user_ctl.users[0] if self.user_ctl.users[0].won_round else self.user_ctl.users[1]
-        assert winner.won_round
-        return winner
+        winners = [player for player in self.user_ctl.users if player.won_round]
+        assert len(winners) == 1
+        return winners[0]
 
-    def clone(self, **kwargs) -> 'LoveLetterState':
+    def clone(self, **kwargs):
         """ Create a deep clone of this game state.
         """
         st = LoveLetterState(self.numberOfPlayers)
         st.round = self.round
         st.playerHands = defaultdict(list)
-        st.used_cards = copy(self.used_cards)
-        st.currentTrick = copy(self.currentTrick)
-        st.tricksTaken = copy(self.tricksTaken)
+        st.used_cards = deepcopy(self.used_cards)
+        st.currentTrick = deepcopy(self.currentTrick)
+        st.tricksTaken = deepcopy(self.tricksTaken)
         st.seen_cards = deepcopy(self.seen_cards)
         st.round_over = self.round_over
         st.wrong_guesses = deepcopy(self.wrong_guesses)
@@ -67,8 +65,8 @@ class LoveLetterState:
         st.tricks_taken_limit = self.tricks_taken_limit
 
         for card, counter in st.used_cards.items():
-            for _ in range(counter):
-                card_count[card] -= 1
+            card_count[card] -= counter
+            assert card_count[card] >= 0
 
         for card, counter in card_count.items():
             if counter > 0:
@@ -76,11 +74,12 @@ class LoveLetterState:
 
         random.shuffle(st.deck)
         st.user_ctl = self.user_ctl.clone()
+        st.real_players = deepcopy(st.real_players)
         st.playerToMove = st.user_ctl.users[st.user_ctl.users.index(self.playerToMove)]
 
         return st
 
-    def clone_and_randomize(self, **kwargs) -> 'LoveLetterState':
+    def clone_and_randomize(self, **kwargs):
         """ Create a deep clone of this game state, randomizing any information not visible to the specified observer player.
         """
         st = self.clone()
@@ -95,12 +94,16 @@ class LoveLetterState:
         for user in st.user_ctl.users:
             if user != st.playerToMove and not user.lost:
                 if not kwargs.get('vanilla', False) and st.seen_cards[st.playerToMove][user]:
-                    assert len(st.seen_cards[st.playerToMove][user]) <= 1
                     taken_card = random.choice(st.seen_cards[st.playerToMove][user])
-                    st.playerHands[user].append(taken_card)
-                    st.deck.remove(taken_card)
-                else:
-                    user.take_card(st)
+                    if taken_card in st.deck:
+                        st.playerHands[user].append(taken_card)
+                        st.deck.remove(taken_card)
+                    else:
+                        del st.seen_cards[st.playerToMove][user][:]
+
+        for user in st.user_ctl.users:
+            if user != st.playerToMove and not user.lost and not st.playerHands[user]:
+                user.take_card(st)
 
         # select outcard
         st.out_card = st.deck.pop()
@@ -108,10 +111,11 @@ class LoveLetterState:
         return st
 
     def add_seen_card(self, _from, to, card):
-        if not self.seen_cards[_from][to] or self.seen_cards[_from][to][-1] != card:
+        if not self.seen_cards[_from][to] or card not in self.seen_cards[_from][to]:
+            del self.seen_cards[_from][to][:]
             self.seen_cards[_from][to].append(card)
 
-    def get_moves(self) -> List[Card]:
+    def get_moves(self):
         """
         :return: list of available moves for current user 
         """
@@ -123,7 +127,7 @@ class LoveLetterState:
 
         return available_moves
 
-    def get_card_deck(self) -> List[Card]:
+    def get_card_deck(self):
         """ Construct a standard deck of 16 cards.
         """
         return [Princess(),
@@ -143,7 +147,7 @@ class LoveLetterState:
                 Guard(),
                 Guard()]
 
-    def start_new_round(self, first_player: 'Player'=None) -> None:
+    def start_new_round(self, first_player=None):
         """
         :param first_player: player(instance of User class) who starts current round. If None, then random player starts round
         :return:  
@@ -170,10 +174,6 @@ class LoveLetterState:
             winner_index = self.user_ctl.users.index(first_player)
             # cyclic shift of players
             self.user_ctl.users = self.user_ctl.users[winner_index:] + self.user_ctl.users[:winner_index]
-            # for index, user in enumerate(self.user_ctl.users):
-            #     if index > 0 and user == first_player:
-            #         self.user_ctl.users[index], self.user_ctl.users[0] = self.user_ctl.users[0], user
-            #         break
 
         self.used_cards = defaultdict(int)
         self.currentTrick = []
@@ -191,16 +191,16 @@ class LoveLetterState:
         if self.real_players and self.user_ctl.users[0] != self.real_players[0]:
             print("Your new hand is: ", self.playerHands[self.real_players[0]])
 
-    def do_move(self, move: 'Card', **kwargs) -> None:
+    def do_move(self, move, **kwargs):
         """
         Function apply moves for current player and change state (itself)
         :param move: move to make
         :param verbose: simple logging of every action
         :param global_game: in case of simulation algorithm plays until round ends.
         in case of global gamel multiple rounds are played.
-        :return: 
+        :return: list of messages
         """
-
+        messages = []
         assert move
 
         global_game = kwargs.get('global_game', False)
@@ -225,6 +225,9 @@ class LoveLetterState:
             victim = random.choice(left_players) if left_players else None
             kwargs['victim'] = victim
 
+        if victim:
+            assert not self.user_ctl.users[self.user_ctl.users.index(victim)].lost
+
         # Remove the card from the player's hand
         self.playerHands[self.playerToMove].remove(move)
         assert len(self.playerHands[self.playerToMove]) == 1
@@ -232,9 +235,10 @@ class LoveLetterState:
         self.used_cards[move] += 1
         # code to refactor
         if move.name == "Prince" and not victim:
-            clean_cards(self.playerHands[self.playerToMove][0], self.wrong_guesses[self.playerToMove], self.seen_cards, self.playerToMove)
-        move.activate(self, **kwargs)
-        
+            clean_cards(self.playerHands[self.playerToMove][0], self.wrong_guesses[self.playerToMove], self.seen_cards,
+                        self.playerToMove)
+        messages.extend(move.activate(self, **kwargs))
+
         # Store the played card in the current trick
         self.currentTrick.append((self.playerToMove, move))
 
@@ -249,6 +253,7 @@ class LoveLetterState:
 
             self.round_over = True
             if global_game:
+                messages.append("Round #{} won by {}".format(self.round, winner))
                 print("\n\nRound #{} won by {}".format(self.round, winner))
                 self.start_new_round(first_player=winner)
 
@@ -278,6 +283,7 @@ class LoveLetterState:
 
             self.round_over = True
             if global_game:
+                messages.append("Round #{} won by {}".format(self.round, winner))
                 print("\n\nRound #{} won by {}".format(self.round, winner))
                 self.start_new_round(first_player=winner)
         else:
@@ -287,6 +293,8 @@ class LoveLetterState:
             # check that there are more that one player
             assert previous_player != self.playerToMove
             self.playerToMove.take_card(self)
+
+        return messages
 
     def __repr__(self):
         """ Return a human-readable representation of the state
@@ -302,11 +310,55 @@ class LoveLetterState:
         return result
 
 
+def compare(decks):
+    table = TranspositionTable()
+    with open('ismcts_vs_ismcts__200.txt', 'w') as out:
+
+        for iterations in (50, 100, 200, 500, 1000, 2000, 4000):
+            winner_counter = defaultdict(int)
+            game_number = 1
+
+            for plays in range(game_number):
+                state = LoveLetterState(2, decks)
+                state.start_new_round()
+                mode = PlayingMode(state, "compare_bots", show_logs=False)
+
+                while not state.game_over:
+                    try:
+                        assert len(state.playerHands[state.playerToMove]) == 2
+                    except:
+                        import pdb
+                        pdb.set_trace()
+                    move, victim, guess = mode.get_move(iterations)
+                    # table.write(state, move, victim, guess)
+                    state.do_move(move, verbose=False, global_game=True, victim=victim, guess=guess,
+                                  real_player=state.playerToMove == mode.real_player, vanilla=False)
+
+                # determine a winner
+                for player in state.user_ctl.users:
+                    if state.tricksTaken[player] == state.tricks_taken_limit:
+                        # print("Player " + str(player) + " wins the game!")
+                        winner_counter[player.algorithm] += 1
+
+            assert (sum(winner_counter.values()) == game_number)
+
+            out.write("{} iterations\n".format(iterations))
+
+            for algorithm, won_count in winner_counter.items():
+                out.write("{} - {}\n".format(algorithm, won_count))
+            out.write("\n")
+
+            print("Iterations - {}".format(iterations, ))
+            print(winner_counter)
+
+    print("Done")
+    # table.close()
+
+
 def play_game():
     """ 
     Play a sample game between 2-4 ISMCTS players.
     """
-    results = []
     decks = []
 
     # use decks specified in advance
@@ -314,28 +366,22 @@ def play_game():
         for line in f:
             splitted = line.split()
             decks.append([card_dict[card] for card in splitted])
+    # state = LoveLetterState(2, decks)
+    # state.start_new_round()
 
-    for iterations in (1000, 2000, 4000, 8000):
-        state = LoveLetterState(2, decks)
-        state.start_new_round()
-        mode = PlayingMode(state, "compare_bots")
+    compare(decks)
 
-        while not state.game_over:
-            print("\n", state)
-            move, victim, guess = mode.get_move(iterations)
-            state.do_move(move, verbose=True, global_game=True, victim=victim, guess=guess,
-                          real_player=False, vanilla=True if state.playerToMove == state.user_ctl.users[1] else False)
-
-        # determine a winner
-        for player in state.user_ctl.users:
-            if state.tricksTaken[player] == state.tricks_taken_limit:
-                print("Player " + str(player) + " wins the game!")
-                results.append((player, state.round))
-
-        print("#" * 80)
-
-    for x, y in results:
-        print(x, y)
+    # mode = PlayingMode(state, "real_player")
+    # while not state.game_over:
+    #     print("\n", state)
+    #     move, victim, guess = mode.get_move(0)
+    #     state.do_move(move, verbose=True, global_game=True, victim=victim, guess=guess,
+    #                   real_player=state.playerToMove == mode.real_player, vanilla=False)
+    #
+    # # determine a winner
+    # for player in state.user_ctl.users:
+    #     if state.tricksTaken[player] == state.tricks_taken_limit:
+    #         print("Player " + str(player) + " wins the game!")
 
 
 if __name__ == "__main__":
